@@ -3307,10 +3307,10 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 #endif
 	} else if (wl_get_mode_by_netdev(wl, dev) == WL_MODE_BSS) {
 		u8 *curmacp = wl_read_prof(wl, dev, WL_PROF_BSSID);
+		err = -ENODEV;
 		if (!wl_get_drv_status(wl, CONNECTED, dev) ||
-			(dhd_is_associated(dhd, NULL) == FALSE)) {
-			WL_ERR(("NOT assoc\n"));
-			err = -ENODEV;
+			(dhd_is_associated(dhd, NULL, &err) == FALSE)) {
+			WL_ERR(("NOT assoc: %d\n", err));
 			goto get_station_err;
 		}
 		if (memcmp(mac, curmacp, ETHER_ADDR_LEN)) {
@@ -3362,9 +3362,9 @@ tolerate it 10 times instead of force-disconneting. */
 /* LGE_CHANGE_E, moon-wifi@lge.com by 2lee, 20120619, When getting a station info just after freezing & Restarting tasks is failed, 
 tolerate it 10 times instead of force-disconneting. */
 
-		if (err) {
+		if (err && (err != -ETIMEDOUT) && (err != -EIO)) {
 			/* Disconnect due to zero BSSID or error to get RSSI */
-			WL_ERR(("force cfg80211_disconnected\n"));
+			WL_ERR(("force cfg80211_disconnected %d\n", err));
 			wl_clr_drv_status(wl, CONNECTED, dev);
 			cfg80211_disconnected(dev, 0, NULL, 0, GFP_KERNEL);
 			wl_link_down(wl);

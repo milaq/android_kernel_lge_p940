@@ -37,7 +37,7 @@
 #ifdef CONFIG_COMMON_PATCH
 #define IOCTL_RESP_TIMEOUT  5000 /* In milli second */
 #else
-#define IOCTL_RESP_TIMEOUT  20000 /* In milli second */
+#define IOCTL_RESP_TIMEOUT  2000 /* In milli second */
 #endif
 #endif /* IOCTL_RESP_TIMEOUT */
 
