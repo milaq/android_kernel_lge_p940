@@ -211,12 +211,8 @@ static struct mm_struct *mm_access(struct task_struct *task, unsigned int mode)
 
 	mm = get_task_mm(task);
 	if (mm && mm != current->mm &&
-#if defined(CONFIG_MACH_LGE_P2)
 			!ptrace_may_access(task, mode) &&
 			!capable(CAP_SYS_RESOURCE)) {
-#else
-			!ptrace_may_access(task, mode)) {
-#endif
 		mmput(mm);
 		mm = ERR_PTR(-EACCES);
 	}
@@ -858,11 +854,16 @@ static ssize_t mem_read(struct file *file, char __user *buf,
 	return mem_rw(file, buf, count, ppos, 0);
 }
 
+#define mem_write NULL
+
+#ifndef mem_write
+/* This is a security hazard */
 static ssize_t mem_write(struct file *file, const char __user *buf,
 			 size_t count, loff_t *ppos)
 {
 	return mem_rw(file, (char __user*)buf, count, ppos, 1);
 }
+#endif
 
 loff_t mem_lseek(struct file *file, loff_t offset, int orig)
 {
