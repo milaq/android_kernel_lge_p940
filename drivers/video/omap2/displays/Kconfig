@@ -1,0 +1,130 @@
+menu "OMAP2/3 Display Device Drivers"
+        depends on OMAP2_DSS
+
+config PANEL_GENERIC_DPI
+        tristate "Generic DPI Panel"
+	depends on OMAP2_DSS_DPI
+        help
+	  Generic DPI panel driver.
+	  Supports DVI output for Beagle and OMAP3 SDP.
+	  Supports LCD Panel used in TI SDP3430 and EVM boards,
+	  OMAP3517 EVM boards and CM-T35.
+
+config PANEL_LGPHILIPS_LB035Q02
+	tristate "LG.Philips LB035Q02 LCD Panel"
+	depends on OMAP2_DSS_DPI && SPI
+	help
+	  LCD Panel used on the Gumstix Overo Palo35
+
+config PANEL_SHARP_LS037V7DW01
+        tristate "Sharp LS037V7DW01 LCD Panel"
+        depends on OMAP2_DSS_DPI
+        select BACKLIGHT_CLASS_DEVICE
+        help
+          LCD Panel used in TI's SDP3430 and EVM boards
+
+config PANEL_NEC_NL8048HL11_01B
+	tristate "NEC NL8048HL11-01B Panel"
+	depends on OMAP2_DSS_DPI
+	help
+		This NEC NL8048HL11-01B panel is TFT LCD
+		used in the Zoom2/3/3630 sdp boards.
+
+config PANEL_TAAL
+        tristate "Taal DSI Panel"
+        depends on OMAP2_DSS_DSI
+        help
+          Taal DSI command mode panel from TPO.
+
+config PANEL_TPO_TD043MTEA1
+        tristate "TPO TD043MTEA1 LCD Panel"
+        depends on OMAP2_DSS_DPI && SPI
+        help
+          LCD Panel used in OMAP3 Pandora
+
+config PANEL_ACX565AKM
+	tristate "ACX565AKM Panel"
+	depends on OMAP2_DSS_SDI && SPI
+	select BACKLIGHT_CLASS_DEVICE
+	help
+	  This is the LCD panel used on Nokia N900
+
+config PANEL_TC358765
+	tristate "Toshiba TC358765 DSI-2-LVDS chip"
+	depends on OMAP2_DSS_DSI && I2C
+	select BACKLIGHT_CLASS_DEVICE
+	help
+	  Toshiba TC358765 DSI-2-LVDS chip with 1024x768 panel
+
+config TC358765_DEBUG
+    bool "Toshiba TC358765 DSI-2-LVDS chip debug"
+    depends on PANEL_TC358765 && DEBUG_FS
+    help
+      Support of TC358765 DSI-2-LVDS chip register access via debugfs
+
+config PANEL_LGHDK
+       tristate "OMAP4 HDK LCD Panel"
+       help
+	  LCD Panel used for LGE HDK board 
+
+config PANEL_LH430WV4_SD02
+    tristate "B2 Rev.A panel(LH430WV4-SD02) LG4574 driver IC"
+    default n
+    help
+        This is the B2 Rev.A panel(LH430WV4-SD02) LG4574 driver IC
+
+config PANEL_TX11D101VM_0EAA
+    tristate "B2 Korea and Docomo panel(TX11D101VM_0EAA) LG4574 driver IC"
+    default n
+    help
+        This is the B2 Korea and Docomo HITACHI panel(TX11D101VM_0EAA) LG4574 driver IC
+
+config PANEL_TX11D108VM_0BAA
+    tristate "U2-P769 Hitachi panel(TX11D108VM_0BAA) Renesas driver IC"
+    default n
+    help
+        This is the U2-P769 TMUS HITACHI panel(TX11D108VM_0BAA) Renesas driver IC
+
+config PANEL_HX8389
+    tristate "U2-P760 Tovis panel() HIMAX driver IC"
+    default n
+    help
+        This is the U2-P760 EU Tovis panel() HIMAX driver IC
+choice
+    prompt "Choose DSI Mode"
+    depends on PANEL_TX11D101VM_0EAA || PANEL_LH430WV4_SD02 || PANEL_TX11D108VM_0BAA || PANEL_HX8389
+    default DSI_VIDEO_MODE
+
+config DSI_CMD_MODE
+    bool "DSI Command Mode"
+
+config DSI_VIDEO_MODE
+    bool "DSI Video Mode"
+
+endchoice
+
+config OMAP_USE_CMOS_TE_TRIGGER
+    bool "OMAP DSI Tearing Effect Trigger Source is CMOS TE"
+    depends on DSI_CMD_MODE
+    default y
+    help
+      OMAP has two trigger source of tearing effect which are DSI PHY and 
+      CMOS TE. The CMOS TE is can work without DSI bus turn around(BTA).  
+      This configuration can be used when TE trigger source is CMOS TE
+
+config DSI_VIDEO_CMD_TRANSITION
+    bool "Workaround for command mode when bootloader use video mode "
+    depends on DSI_CMD_MODE && MACH_LGE_P2
+    default y
+    help
+      Since P2 bootloader use video mode, we cannot use command mode with seamless 
+      logo display at kernel. So this is workaround to solve this problem.
+      Until fisrt suspend, lcd run as video mode and after first suspend lcd rus as command mode. 
+   
+config PANEL_DX11D100VM
+    tristate "Hitachi DX11D100VM LCD panel (Renesas R69328 Driver IC)"
+    default n
+    help
+        This is the Hitachi panel(DX11D100VM) which is using Renesas R69328 Driver IC
+	   
+endmenu
