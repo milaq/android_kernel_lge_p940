@@ -1,3 +1,13 @@
+
+3.0.21 for LG P940
+
+config: p2_p940_defconfig
+toolchain: as always, builds fine with arm-2010q1
+
+
+------------------------------------------------------------------------
+
+
 	Linux kernel release 3.x <http://kernel.org/>
 
 These are the release notes for Linux version 3.  Read them carefully,
