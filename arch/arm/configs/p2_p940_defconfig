@@ -1192,7 +1192,7 @@ CONFIG_WLAN=y
 # CONFIG_B43 is not set
 # CONFIG_B43LEGACY is not set
 CONFIG_BCMDHD=m
-CONFIG_BCMDHD_FW_PATH="/system/etc/firmware/fw_bcmdhd.bin"
+CONFIG_BCMDHD_FW_PATH="/vendor/firmware/fw_bcmdhd.bin"
 CONFIG_BCMDHD_NVRAM_PATH="/system/etc/wifi/bcmdhd.cal"
 CONFIG_LGE_BCM432X_PATCH=y
 CONFIG_BCMDHD_CONFIG_PATH="/data/misc/wifi/config"
