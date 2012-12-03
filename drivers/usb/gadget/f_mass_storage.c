@@ -299,8 +299,8 @@
 
 #define VENDOR_NAME_LGE	"LGE"
 
-#define PRODUCT_NAME_ANDROID	"P2"
-#define PRODUCT_NAME_EXTERNAL 	"P2 SD Card"
+#define PRODUCT_NAME_ANDROID	"P940"
+#define PRODUCT_NAME_EXTERNAL 	"P940 SD Card"
 
 static const char vendor_name[] = VENDOR_NAME_LGE;
 static const char product_name[] = PRODUCT_NAME_ANDROID;
