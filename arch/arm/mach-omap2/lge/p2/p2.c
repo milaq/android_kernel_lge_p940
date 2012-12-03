@@ -15,7 +15,7 @@
 #include <mach/omap4-common.h>
 
 #ifdef CONFIG_MACH_LGE_P2_P940
-MACHINE_START(LGE_P2, "LGE P940 board")
+MACHINE_START(LGE_P2, "P940")
 #else
 #error "Unknown P2 board"
 #endif
