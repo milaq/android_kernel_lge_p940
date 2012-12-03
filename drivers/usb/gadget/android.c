@@ -58,13 +58,12 @@
 
 #include "f_cdrom_storage.c"
 
-#if defined(CONFIG_LGE_ANDROID_USB)
+#if 0
 #include "f_ecm.c"
-#else
+#endif
 #define USB_ETH_RNDIS y
 #include "f_rndis.c"
 #include "rndis.c"
-#endif 
 
 #include "u_ether.c"
 
@@ -448,7 +447,6 @@ static struct android_usb_function ptp_function = {
 	.bind_config	= ptp_function_bind_config,
 };
 
-#if !defined(CONFIG_LGE_ANDROID_USB)
 struct rndis_function_config {
 	u8      ethaddr[ETH_ALEN];
 	u32     vendorID;
@@ -630,9 +628,8 @@ static struct android_usb_function rndis_function = {
 	.unbind_config	= rndis_function_unbind_config,
 	.attributes	= rndis_function_attributes,
 };
-#endif
 
-#if defined(CONFIG_LGE_ANDROID_USB)
+#if 0
 // ecm function
 struct ecm_function_config {
 	u8      ethaddr[ETH_ALEN];
@@ -1013,11 +1010,10 @@ static struct android_usb_function *supported_functions[] = {
 	&acm_function,
 	&mtp_function,
 	&ptp_function,
-#if defined(CONFIG_LGE_ANDROID_USB)
+#if 0
 	&ecm_function,
-#else	
-	&rndis_function,
 #endif
+	&rndis_function,
 	&mass_storage_function,
 	&accessory_function,
 ///////////////////////////////////////
