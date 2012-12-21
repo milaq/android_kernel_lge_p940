@@ -33,4 +33,6 @@
 #define OMAP_HDMI_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | \
 				SNDRV_PCM_FMTBIT_S24_LE)
 
+
+	#define HDMI_AUDIO(format, ...)
 #endif

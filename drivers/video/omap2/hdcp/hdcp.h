@@ -34,6 +34,8 @@
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
+#include <linux/lge/lge_mhl.h>
+
 struct hdcp_encrypt_control {
 	uint32_t in_key[DESHDCP_KEY_SIZE];
 	uint32_t *out_key;
@@ -188,7 +190,8 @@ enum encryption_state {
 
 #define HDMI_CORE_AV_HDMI_CTRL__HDMI_MODE	0x01
 
-enum av_mute {
+enum av_mute
+{
 	AV_MUTE_SET = 0x01,
 	AV_MUTE_CLEAR = 0x10
 };
@@ -239,12 +242,14 @@ enum av_mute {
 /* FIXME: should be 300ms delay between HDMI start frame event and HDCP enable
  * (to respect 7 VSYNC delay in 24 Hz)
  */
+//#define HDCP_ENABLE_DELAY	1500
 #define HDCP_ENABLE_DELAY	300
 #define HDCP_R0_DELAY		110
 #define HDCP_KSV_TIMEOUT_DELAY  5000
 #define HDCP_REAUTH_DELAY	100
 
 /* DDC access timeout in ms */
+//#define HDCP_DDC_TIMEOUT	2000
 #define HDCP_DDC_TIMEOUT	500
 #define HDCP_STOP_FRAME_BLOCKING_TIMEOUT (2*HDCP_DDC_TIMEOUT)
 
@@ -350,16 +355,6 @@ extern struct hdcp_sha_in sha_input;
 
 #define RD_FIELD_32(base, offset, start, end) \
 	((RD_REG_32(base, offset) & FLD_MASK(start, end)) >> (end))
-
-
-#undef DBG
-
-#ifdef HDCP_DEBUG
-#define DBG(format, ...) \
-		printk(KERN_DEBUG "HDCP: " format "\n", ## __VA_ARGS__)
-#else
-#define DBG(format, ...)
-#endif
 
 /***************************/
 /* Function prototypes     */

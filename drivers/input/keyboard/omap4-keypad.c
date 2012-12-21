@@ -32,6 +32,8 @@
 #include <linux/pm_runtime.h>
 
 #include <plat/omap4-keypad.h>
+#include <linux/lge/lge_input.h>
+#include <linux/wakelock.h>
 
 /* OMAP4 registers */
 #define OMAP4_KBD_REVISION		0x00
@@ -86,8 +88,20 @@ struct omap4_keypad {
 	unsigned int row_shift;
 	unsigned char key_state[8];
 	void (*keypad_pad_wkup)(int enable);
+	struct wake_lock wlock;
 	unsigned short keymap[];
 };
+
+#ifdef CONFIG_KEYBOARD_OMAP4_SAFEMODE
+static int safemode_key = 0;
+
+static ssize_t show_safemode_key(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", safemode_key);
+}
+DEVICE_ATTR(key_saving, 0660, show_safemode_key, NULL);
+#endif
 
 /* Interrupt handler */
 static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
@@ -98,23 +112,43 @@ static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
 	unsigned int col, row, code, changed;
 	u32 *new_state = (u32 *) key_state;
 
+	wake_lock_timeout(&keypad_data->wlock, 1 * HZ);
+
 	*new_state = __raw_readl(keypad_data->base + OMAP4_KBD_FULLCODE31_0);
 	*(new_state + 1) = __raw_readl(keypad_data->base
 						+ OMAP4_KBD_FULLCODE63_32);
 
-	for (row = 0; row < keypad_data->rows; row++) {
-		changed = key_state[row] ^ keypad_data->key_state[row];
+	for (col = 0; col < keypad_data->cols; col++) {
+		changed = key_state[col] ^ keypad_data->key_state[col];
 		if (!changed)
 			continue;
-
-		for (col = 0; col < keypad_data->cols; col++) {
-			if (changed & (1 << col)) {
+		for (row = 0; row < keypad_data->rows; row++) {
+			if (changed & (1 << row)) {
 				code = MATRIX_SCAN_CODE(row, col,
 						keypad_data->row_shift);
-				input_event(input_dev, EV_MSC, MSC_SCAN, code);
-				input_report_key(input_dev,
-						 keypad_data->keymap[code],
-						 key_state[row] & (1 << col));
+
+				if( keypad_data->keymap[code] ) {
+				    input_event(input_dev, EV_MSC, MSC_SCAN, code);
+				    input_report_key(input_dev,
+                            keypad_data->keymap[code],
+                            (bool)(key_state[col] & (1 << row)));
+
+                    printk("[omap4-keypad] %s KEY %s\n",
+						(keypad_data->keymap[code] == KEY_VOLUMEUP) ? "Vol_UP" : ((keypad_data->keymap[code] == KEY_VOLUMEDOWN) ? "Vol_DOWN" : "CAPTURE"),
+						(key_state[col] & (1 << row)) ? "PRESS" : "RELEASE" );
+
+#ifdef CONFIG_INPUT_LGE_GKPD
+                    gkpd_report_key(keypad_data->keymap[code], (bool)(key_state[col] & (1 << row)));
+#endif
+
+                    break;
+				}
+
+#ifdef CONFIG_KEYBOARD_OMAP4_SAFEMODE
+				if (keypad_data->keymap[code] == KEY_VOLUMEUP) {
+					safemode_key = !!(key_state[col] & (1 << row));
+				}
+#endif
 			}
 		}
 	}
@@ -134,6 +168,10 @@ static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
 static int omap4_keypad_open(struct input_dev *input)
 {
 	struct omap4_keypad *keypad_data = input_get_drvdata(input);
+
+#ifdef KBD_DEBUG
+	printk("omap4-keypad: omap4_keypad_open \n");
+#endif
 
 	pm_runtime_get_sync(input->dev.parent);
 
@@ -177,6 +215,10 @@ static void omap4_keypad_close(struct input_dev *input)
 			keypad_data->base + OMAP4_KBD_IRQSTATUS);
 
 	enable_irq(keypad_data->irq);
+
+#ifdef KBD_DEBUG
+	printk("omap4-keypad: omap4_keypad_close \n");
+#endif
 
 	pm_runtime_put_sync(input->dev.parent);
 }
@@ -280,6 +322,15 @@ static int __devinit omap4_keypad_probe(struct platform_device *pdev)
 	matrix_keypad_build_keymap(pdata->keymap_data, row_shift,
 			input_dev->keycode, input_dev->keybit);
 
+#if defined(CONFIG_MHL_INPUT_RCP)
+	hdmi_common_register_keys(input_dev);
+#endif
+
+#if defined(CONFIG_SND_OMAP_SOC_LGE_JACK)
+	__set_bit(KEY_HOOK, input_dev->keybit);
+#endif
+	wake_lock_init(&keypad_data->wlock, WAKE_LOCK_SUSPEND, "omap4-keypad");
+
 	/*
 	 * Set irq level detection for mpu. Edge event are missed
 	 * in gic if the mpu is in low power and keypad event
@@ -303,11 +354,24 @@ static int __devinit omap4_keypad_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, keypad_data);
+
+#ifdef CONFIG_KEYBOARD_OMAP4_SAFEMODE
+	error = device_create_file(&pdev->dev, &dev_attr_key_saving);
+	if (error < 0) {
+		dev_warn(&pdev->dev, "failed to create sysfs for key_saving\n");
+	}
+#endif
+
+#ifdef CONFIG_MACH_LGE
+	lge_input_set(input_dev);
+#endif
+
 	return 0;
 
 err_pm_disable:
 	pm_runtime_disable(&pdev->dev);
 	free_irq(keypad_data->irq, keypad_data);
+	wake_lock_destroy(&keypad_data->wlock);
 err_free_input:
 	input_free_device(input_dev);
 err_unmap:
@@ -324,7 +388,13 @@ static int __devexit omap4_keypad_remove(struct platform_device *pdev)
 	struct omap4_keypad *keypad_data = platform_get_drvdata(pdev);
 	struct resource *res;
 
+#ifdef CONFIG_KEYBOARD_OMAP4_SAFEMODE
+	device_remove_file(&pdev->dev, &dev_attr_key_saving);
+#endif
+
 	free_irq(keypad_data->irq, keypad_data);
+
+	wake_lock_destroy(&keypad_data->wlock);
 
 	pm_runtime_disable(&pdev->dev);
 

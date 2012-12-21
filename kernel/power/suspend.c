@@ -217,6 +217,9 @@ int suspend_devices_and_enter(suspend_state_t state)
 	error = dpm_suspend_start(PMSG_SUSPEND);
 	if (error) {
 		printk(KERN_ERR "PM: Some devices failed to suspend\n");
+#if defined(CONFIG_MACH_LGE_P2)
+		mdelay(2);
+#endif
 		goto Recover_platform;
 	}
 	suspend_test_finish("suspend devices");

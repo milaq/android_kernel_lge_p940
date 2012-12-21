@@ -88,7 +88,7 @@ static ssize_t rproc_format_trace_buf(char __user *userbuf, size_t count,
 		} else
 			return num_copied;
 print_beg:
-	for (i = 0; i < w_pos && buf[i]; i++)
+	for (i = 0; i < w_pos && i < size && buf[i]; i++)
 		;
 
 	if (i) {

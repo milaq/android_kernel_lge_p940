@@ -441,6 +441,16 @@ struct input_keymap_entry {
 #define KEY_WIMAX		246
 #define KEY_RFKILL		247	/* Key that controls all radios */
 
+#if defined(CONFIG_MACH_LGE)
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
+#define KEY_3D			249		/* 3D barrier key */
+#else
+#define KEY_CAPTURE		249
+#endif
+#define KEY_HOOK		250		/* Earjack hook key */
+#define KEY_GESTURE		251		/* Gesture key */
+#endif	/* CONFIG_MACH_LGE */
+
 /* Code 255 is reserved for special needs of AT keyboard driver */
 
 #define BTN_MISC		0x100
@@ -665,7 +675,9 @@ struct input_keymap_entry {
 #define KEY_CAMERA_FOCUS	0x210
 #define KEY_WPS_BUTTON		0x211	/* WiFi Protected Setup key */
 
+#define KEY_TESTMODE_UNLOCK 0x2FD
 #define KEY_TOUCHPAD_TOGGLE	0x212	/* Request switch touchpad on or off */
+
 #define KEY_TOUCHPAD_ON		0x213
 #define KEY_TOUCHPAD_OFF	0x214
 
@@ -1476,7 +1488,7 @@ void input_inject_event(struct input_handle *handle, unsigned int type, unsigned
 
 static inline void input_report_key(struct input_dev *dev, unsigned int code, int value)
 {
-	input_event(dev, EV_KEY, code, !!value);
+	input_event(dev, EV_KEY, code, value);
 }
 
 static inline void input_report_rel(struct input_dev *dev, unsigned int code, int value)

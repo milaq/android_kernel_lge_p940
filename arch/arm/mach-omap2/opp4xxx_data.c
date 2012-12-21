@@ -651,9 +651,14 @@ int __init omap4_opp_init(void)
 		r = omap_init_opp_table(omap446x_opp_def_list,
 			ARRAY_SIZE(omap446x_opp_def_list));
 		trimmed = omap_readl(0x4a002268) & ((1 << 18) | (1 << 19));
+#ifdef CONFIG_MACH_LGE_IFF
 		/* if device is untrimmed override DPLL TRIM register */
+		if (system_rev > 2 && !trimmed)
+			omap_writel(0x29, 0x4a002330);
+#else
 		if (!trimmed)
 			omap_writel(0x29, 0x4a002330);
+#endif
 	} else if (cpu_is_omap447x()) {
 		struct clk *dpll_core_ck;
 		unsigned long rate = 0;

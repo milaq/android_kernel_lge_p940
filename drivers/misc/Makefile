@@ -51,7 +51,17 @@ obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
 obj-$(CONFIG_APANIC)		+= apanic.o
 obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
 obj-$(CONFIG_OMAP_DIE_TEMP_SENSOR)	+= omap_temp_sensor.o
+obj-$(CONFIG_LBEE9QMB_RFKILL)	+= lbee9qmb-rfkill.o
+obj-$(CONFIG_BD_ADDRESS)       += bd_address.o
+obj-$(CONFIG_CDC_TCXO)		+= cdc_tcxo.o
+
+obj-$(CONFIG_MPU_SENSORS_MPU3050)   += mpu3050/
+obj-$(CONFIG_SENSORS_BMC050)        += bmc050/
 obj-$(CONFIG_TWL6040_VIB)	+= twl6040-vib.o
 obj-$(CONFIG_GCCORE)		+= gcx/gccore/
 obj-$(CONFIG_GCBV)		+= gcx/gcbv/
 obj-$(CONFIG_GCIOCTL)		+= gcx/gcioctl/
+obj-$(CONFIG_TSPDRV)		+= tspdrv/
+
+obj-$(CONFIG_LGE_MODEM_WATCHER)	+= modem_watcher.o
+obj-$(CONFIG_TS0710_MUX)	+= ts0710mux/

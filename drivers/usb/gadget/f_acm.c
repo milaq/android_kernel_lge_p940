@@ -96,10 +96,12 @@ static inline struct f_acm *port_to_acm(struct gserial *p)
 /*-------------------------------------------------------------------------*/
 
 /* notification endpoint uses smallish and infrequent fixed-size messages */
-
 #define GS_LOG2_NOTIFY_INTERVAL		5	/* 1 << 5 == 32 msec */
-#define GS_NOTIFY_MAXPACKET		10	/* notification + 2 bytes */
-
+#if defined(CONFIG_LGE_ANDROID_USB)
+#define GS_NOTIFY_MAXPACKET		16	/* notification + 2 bytes */
+#else
+#define GS_NOTIFY_MAXPACKET             10      /* notification + 2 bytes */
+#endif
 /* interface and class descriptors: */
 
 static struct usb_interface_assoc_descriptor

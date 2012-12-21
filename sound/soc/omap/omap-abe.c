@@ -1045,13 +1045,23 @@ static int omap_abe_dai_hw_params(struct snd_pcm_substream *substream,
 		 * directly onto VX_DL and VX_UL (instead of SDMA).
 		 */
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+
 			/* Vx_DL connection to McBSP 2 ports */
-			format.samp_format = STEREO_RSHIFTED_16;
+			if( params_channels(params) == 1 )
+			    format.samp_format = MONO_RSHIFTED_16;
+			else
+			    format.samp_format = STEREO_RSHIFTED_16;
+
 			abe_connect_serial_port(VX_DL_PORT, &format, MCBSP2_RX);
 			abe_read_port_address(VX_DL_PORT, &dma_params);
 		} else {
+
 			/* Vx_UL connection to McBSP 2 ports */
-			format.samp_format = STEREO_RSHIFTED_16;
+			if( params_channels(params) == 1 )
+			    format.samp_format = MONO_RSHIFTED_16;
+			else
+			    format.samp_format = STEREO_RSHIFTED_16;
+
 			abe_connect_serial_port(VX_UL_PORT, &format, MCBSP2_TX);
 			abe_read_port_address(VX_UL_PORT, &dma_params);
 		}

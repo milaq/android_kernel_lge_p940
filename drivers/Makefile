@@ -129,3 +129,15 @@ obj-$(CONFIG_REMOTE_PROC)	+= remoteproc/
 obj-$(CONFIG_DMM_OMAP)		+= media/
 obj-$(CONFIG_TILER_OMAP)	+= media/
 obj-$(CONFIG_OMAP_HSI)		+= omap_hsi/
+
+#
+# the drivers for LGE board
+#
+
+ifeq ($(CONFIG_MACH_LGE),y)
+subdir-ccflags-$(CONFIG_ARCH_OMAP2PLUS) += -Iarch/arm/mach-omap2/lge/include
+endif
+
+obj-$(CONFIG_MUIC) += muic/
+obj-y += lge/
+

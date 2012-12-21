@@ -139,6 +139,12 @@
 #define TWL6040_LPLLFIN			0x08
 #define TWL6040_HPLLSEL			0x10
 
+/* AMICBCTL (0x0a) fields */
+#define TWL6040_HMICENA			0x01
+#define TWL6040_HMICBSLP		0x02
+#define TWL6040_HMICBPD			0x04
+#define TWL6040_HMICBSCDIS		0x08
+
 /* HSLCTL (0x10) fields */
 
 #define TWL6040_HSDACENAL		0x01
@@ -162,6 +168,9 @@
 #define TWL6040_VIBENAL			0x01
 
 /* VIBCTLL (0x19) fields */
+
+/* HKCTL (0x1C) fields */
+#define TWL6040_HKEN			0x01
 
 #define TWL6040_VIBCTRLRN		0x10
 #define TWL6040_VIBCTRLRP		0x04
@@ -194,8 +203,14 @@
 #define TWL6040_INTCLRMODE		0x08
 #define TWL6040_CLK32KSEL		0x40
 
+#ifdef CONFIG_SND_OMAP_SOC_LG 
+#define TWL6040_SYSCLK_SEL_LPPLL	1
+#define TWL6040_SYSCLK_SEL_HPPLL	2
+#endif
+
 /* STATUS (0x2E) fields */
 
+#define TWL6040_HKCOMP			0x01
 #define TWL6040_PLUGCOMP		0x02
 #define TWL6040_VIBLOCDET		0x10
 #define TWL6040_VIBROCDET		0x20
@@ -238,6 +253,7 @@ struct twl6040 {
 	u8 irq_masks_cur;
 	u8 irq_masks_cache;
 };
+
 
 static inline int twl6040_request_irq(struct twl6040 *twl6040, int irq,
 				      irq_handler_t handler,

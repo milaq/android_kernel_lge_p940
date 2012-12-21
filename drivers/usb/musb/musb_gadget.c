@@ -330,6 +330,13 @@ static void txstate(struct musb *musb, struct musb_request *req)
 
 	musb_ep = req->ep;
 
+	/* Check if EP is disabled */
+	if (!musb_ep->desc) {
+		dev_dbg(musb->controller, "ep:%s disabled - ignore request\n",
+						musb_ep->end_point.name);
+		return;
+	}
+
 	/* we shouldn't get here while DMA is active ... but we do ... */
 	if (dma_channel_status(musb_ep->dma) == MUSB_DMA_STATUS_BUSY) {
 		dev_dbg(musb->controller, "dma pending...\n");
@@ -642,6 +649,13 @@ static void rxstate(struct musb *musb, struct musb_request *req)
 		musb_ep = &hw_ep->ep_out;
 
 	len = musb_ep->packet_sz;
+
+	/* Check if EP is disabled */
+	if (!musb_ep->desc) {
+		dev_dbg(musb->controller, "ep:%s disabled - ignore request\n",
+						musb_ep->end_point.name);
+		return;
+	}
 
 	/* We shouldn't get here while DMA is active, but we do... */
 	if (dma_channel_status(musb_ep->dma) == MUSB_DMA_STATUS_BUSY) {
@@ -1956,6 +1970,12 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 		pm_runtime_put(musb->controller);
 	}
 
+	if (musb->xceiv->last_event !=  USB_EVENT_NONE) {
+		atomic_notifier_call_chain(&musb->xceiv->notifier,
+				musb->xceiv->last_event, NULL);
+		pm_runtime_put(musb->controller);
+	}
+
 	return 0;
 
 err2:
@@ -2150,6 +2170,7 @@ void musb_g_disconnect(struct musb *musb)
 
 	dev_dbg(musb->controller, "devctl %02x\n", devctl);
 
+	printk("%s, devctl %02x\n", __func__, devctl);
 	/* clear HR */
 	musb_writeb(mregs, MUSB_DEVCTL, devctl & MUSB_DEVCTL_SESSION);
 

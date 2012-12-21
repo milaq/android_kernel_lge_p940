@@ -73,6 +73,10 @@ int wake_lock_active(struct wake_lock *lock);
  */
 long has_wake_lock(int type);
 
+#ifdef CONFIG_LGE_SUSPEND_AUTOTEST
+int wake_lock_active_name(char *name);
+#endif
+
 #else
 
 static inline void wake_lock_init(struct wake_lock *lock, int type,
@@ -84,6 +88,10 @@ static inline void wake_unlock(struct wake_lock *lock) {}
 
 static inline int wake_lock_active(struct wake_lock *lock) { return 0; }
 static inline long has_wake_lock(int type) { return 0; }
+
+#ifdef CONFIG_LGE_SUSPEND_AUTOTEST
+static inline int wake_lock_active_name(char *name) { return 0; }
+#endif
 
 #endif
 

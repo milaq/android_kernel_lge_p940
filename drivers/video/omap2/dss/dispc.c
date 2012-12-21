@@ -36,6 +36,8 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/ratelimit.h>
+#include <linux/gpio.h>
+#include <lge/board.h>
 
 #include <plat/sram.h>
 #include <plat/clock.h>
@@ -47,11 +49,13 @@
 #include "../clockdomain.h"
 #include "dss.h"
 #include "dss_features.h"
+#include "gammatable.h"
 #include "dispc.h"
 
 /* DISPC */
 #define DISPC_SZ_REGS			SZ_4K
 
+#define DISPC_REG(idx)			((const u16) {idx})//((const struct dispc_reg) { idx })
 #define DISPC_IRQ_MASK_ERROR            (DISPC_IRQ_GFX_FIFO_UNDERFLOW | \
 					 DISPC_IRQ_OCP_ERR | \
 					 DISPC_IRQ_VID1_FIFO_UNDERFLOW | \
@@ -59,6 +63,8 @@
 					 DISPC_IRQ_SYNC_LOST | \
 					 DISPC_IRQ_SYNC_LOST_DIGIT)
 
+#define DISPC_VID_OMAP4_REG(n, idx) DISPC_REG(0x0600 + (n)*0x04 + idx)
+#define DISPC_GAMMA_TABLE(n)	   DISPC_VID_OMAP4_REG(n, 0x0030)
 #define DISPC_MAX_NR_ISRS		8
 
 static struct clockdomain *l3_1_clkdm, *l3_2_clkdm;
@@ -700,6 +706,10 @@ void dispc_go(enum omap_channel channel)
 
 	DSSDBG("GO %s\n", channel == OMAP_DSS_CHANNEL_LCD ? "LCD" :
 		(channel == OMAP_DSS_CHANNEL_LCD2 ? "LCD2" : "DIGIT"));
+#ifdef CONFIG_P2_GAMMA
+        REG_FLD_MOD(DISPC_CONFIG, 1, 3, 3);
+        REG_FLD_MOD(DISPC_CONFIG, 1, 9, 9);
+#endif
 
 	if (channel == OMAP_DSS_CHANNEL_LCD2)
 		REG_FLD_MOD(DISPC_CONTROL2, 1, bit, bit);
@@ -1540,8 +1550,9 @@ static void _dispc_set_scaling_common(enum omap_plane plane,
 	int accu0 = 0;
 	int accu1 = 0;
 	u32 l;
+	u16 y_adjust = color_mode == OMAP_DSS_COLOR_NV12 ? 2 : 0;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height,
+	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
 				out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_RGB_Y);
 	l = dispc_read_reg(DISPC_OVL_ATTRIBUTES(plane));
@@ -1593,6 +1604,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 {
 	int scale_x = out_width != orig_width;
 	int scale_y = out_height != orig_height;
+	u16 y_adjust = 0;
 
 	if (!dss_has_feature(FEAT_HANDLE_UV_SEPARATE))
 		return;
@@ -1611,6 +1623,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 			orig_height >>= 1;
 			/* UV is subsampled by 2 horz.*/
 			orig_width >>= 1;
+		y_adjust = 1;
 		} else {
 			/* UV is downsampled by 2 vertically*/
 			out_height >>= 1;
@@ -1645,7 +1658,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 	if (out_height != orig_height)
 		scale_y = true;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height,
+	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
 			out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_UV);
 
@@ -1731,9 +1744,6 @@ static void _dispc_set_rotation_attrs(enum omap_plane plane, u8 rotation,
 			row_repeat = true;
 		else
 			row_repeat = false;
-	} else if (color_mode == OMAP_DSS_COLOR_NV12) {
-		/* WA for OMAP4+ UV plane overread HW bug */
-		vidrot = 1;
 	}
 
 	REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane), vidrot, 13, 12);
@@ -3075,6 +3085,189 @@ bool dispc_trans_key_enabled(enum omap_channel ch)
 	return enabled;
 }
 
+u32 dispc_convert_gamma_rgb(int index,u32 temp,int red, int green,int blue)
+{
+	return  index<<24 |(((temp&0x000000FF)*(u32)blue)/255)
+					  |(((((temp&0x0000FF00)>>8)*(u32)green)/255)<<8)
+					  |(((((temp&0x00FF0000)>>16)*(u32)red)/255)<<16);
+}
+int dispc_enable_gamma(enum omap_channel ch, u8 gamma)
+{
+	//printk("GAMMA	:	table_type is %d, red is %d, green is %d, blue is %d \n",
+	//	lcd_gamma_rgb.table_type,lcd_gamma_rgb.red,lcd_gamma_rgb.green,lcd_gamma_rgb.blue);
+#ifdef CONFIG_ARCH_OMAP4
+	u32 i, temp, channel;
+	static int enabled;
+	u32 *tablePtr;
+
+        channel = ch == OMAP_DSS_CHANNEL_LCD ? 0 :
+                 ch == OMAP_DSS_CHANNEL_LCD2 ? 1 : 2;
+
+
+        if (gamma > NO_OF_GAMMA_TABLES)
+                return -EINVAL;
+
+#ifdef CONFIG_P2_S_CURVE
+	{
+		if(ch == 2)
+		{
+			dispc_write_reg(DISPC_GAMMA_TABLE(ch), 0x80000000);
+			for (i = 0; i < GAMMA_TBL_SZ * 4 - 1; i++) {
+				temp = (i << 20) | (i << 10) | i;
+				dispc_write_reg(DISPC_GAMMA_TABLE(ch), temp);
+			}
+		}
+
+		for (i = 0; i < GAMMA_TBL_SZ; i++) {
+				temp =  GammaTable[i] | (i<<24);
+				//if(i == 255)
+					//printk("GAMMA	:	MAX_RGB = %x\n", temp);
+				dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
+		}
+	}
+#else
+        if (gamma) {
+                u8 *tablePtr = gammaTablePtr[gamma - 1];
+
+                for (i = 0; i < GAMMA_TBL_SZ; i++) {
+                        temp =  tablePtr[i];
+                        temp =  (i<<24)|(temp|(temp<<8)|(temp<<16));
+                        dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
+                }
+        }
+#endif
+        enabled = enabled & (~(1 << channel) | (gamma ? (1 << channel) : 0));
+        REG_FLD_MOD(DISPC_CONFIG, (enabled & 1), 3, 3);
+        REG_FLD_MOD(DISPC_CONFIG, !!(enabled & 6), 9, 9);
+
+        return 0;
+#endif
+}
+
+int dispc_set_gamma_rgb(enum omap_channel ch, u8 gamma,int red,int green,int blue)
+{
+#ifdef CONFIG_ARCH_OMAP4
+	u32 i, temp, channel;
+	static int enabled;
+	unsigned char maker_id;
+	u32 *tablePtr;
+
+        channel = ch == OMAP_DSS_CHANNEL_LCD ? 0 :
+                 ch == OMAP_DSS_CHANNEL_LCD2 ? 1 : 2;
+
+
+        if (gamma > NO_OF_GAMMA_TABLES)
+                return -EINVAL;
+
+#ifdef CONFIG_P2_S_CURVE
+	printk("~~!!~~!!~~!!");
+	maker_id =gpio_get_value(GPIO_LCD_MAKER_ID);
+        if(maker_id == 1){
+		tablePtr = GammaTable_LGD;
+	} else {
+		tablePtr = GammaTable_HITACHI;
+	}
+
+	if(ch == 2)
+	{
+		dispc_write_reg(DISPC_GAMMA_TABLE(ch), 0x80000000);
+		for (i = 0; i < GAMMA_TBL_SZ * 4 - 1; i++) {
+			temp = (i << 20) | (i << 10) | i;
+			dispc_write_reg(DISPC_GAMMA_TABLE(ch), temp);
+		}
+	}
+
+	for ( i = 0; i <GAMMA_TBL_SZ; i++) {
+		temp = tablePtr[i];
+		temp = dispc_convert_gamma_rgb(i,temp,red, green, blue);
+	if(i==255)
+		printk("GAMMA	:	Tabel_values %dth is 0x%x\n",i,temp);
+	dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
+	}
+
+#else
+        if (gamma) {
+                u8 *tablePtr = gammaTablePtr[gamma - 1];
+
+                for (i = 0; i < GAMMA_TBL_SZ; i++) {
+                        temp =  tablePtr[i];
+                        temp =  (i<<24)|(temp|(temp<<8)|(temp<<16));
+                        dispc_write_reg(DISPC_GAMMA_TABLE(channel), temp);
+                }
+        }
+#endif
+
+        enabled = enabled & (~(1 << channel) | (gamma ? (1 << channel) : 0));
+        REG_FLD_MOD(DISPC_CONFIG, (enabled & 1), 3, 3);
+        REG_FLD_MOD(DISPC_CONFIG, !!(enabled & 6), 9, 9);
+
+
+        return 0;
+#endif
+}
+
+void dispc_set_gamma_table()
+{
+	u32 temp;
+	int i, maker_id, gamma_nv_flag;
+	if((lcd_gamma_rgb.red || lcd_gamma_rgb.green || lcd_gamma_rgb.blue))
+		gamma_nv_flag = 1;
+	else
+		gamma_nv_flag = 0;
+	maker_id = gpio_get_value(GPIO_LCD_MAKER_ID);
+
+	if(maker_id == PANEL_LGD) {
+		if(gamma_nv_flag == GAMMA_NV_ENABLED)
+			lcd_gamma_rgb.table_type= PANEL_LGD_NV;
+		else
+			lcd_gamma_rgb.table_type= PANEL_LGD;
+	}
+	else {
+		if(gamma_nv_flag == GAMMA_NV_ENABLED)
+			lcd_gamma_rgb.table_type= PANEL_HITACHI_NV;
+		else
+			lcd_gamma_rgb.table_type= PANEL_HITACHI;
+	}
+
+	switch (lcd_gamma_rgb.table_type) {
+		case PANEL_HITACHI :
+			for(i=0;i<GAMMA_TBL_SZ;i++)
+				GammaTable[i]=GammaTable_HITACHI[i];
+			break;
+
+		case PANEL_LGD :
+			for(i=0;i<GAMMA_TBL_SZ;i++)
+				GammaTable[i]=GammaTable_LGD[i];
+			break;
+
+		case PANEL_HITACHI_NV :
+			for ( i = 0; i <GAMMA_TBL_SZ; i++) {
+				GammaTable[i]=GammaTable_HITACHI[i];
+				temp = GammaTable[i];
+				temp = dispc_convert_gamma_rgb(i,temp,lcd_gamma_rgb.red, lcd_gamma_rgb.green, lcd_gamma_rgb.blue);
+				GammaTable[i] = temp;
+			}
+			break;
+
+		case PANEL_LGD_NV :
+			for ( i = 0; i <GAMMA_TBL_SZ; i++) {
+				GammaTable[i]=GammaTable_LGD[i];
+				temp = GammaTable[i];
+				temp = dispc_convert_gamma_rgb(i,temp,lcd_gamma_rgb.red, lcd_gamma_rgb.green, lcd_gamma_rgb.blue);
+				GammaTable[i] = temp;
+			}
+			break;
+
+		default :
+			maker_id = gpio_get_value(GPIO_LCD_MAKER_ID);
+			if(maker_id == 1)
+				for(i=0;i<GAMMA_TBL_SZ;i++)
+					GammaTable[i]=GammaTable_LGD[i];
+			else
+				for(i=0;i<GAMMA_TBL_SZ;i++)
+					GammaTable[i]=GammaTable_HITACHI[i];
+		}
+}
 
 void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 {
@@ -3094,7 +3287,13 @@ void dispc_set_tft_data_lines(enum omap_channel channel, u8 data_lines)
 		code = 3;
 		break;
 	default:
+
+#if defined(CONFIG_MACH_LGE_COSMOPOLITAN) || defined(CONFIG_MACH_LGE_P940)
+		code = 3;
+#else /* original */
 		BUG();
+#endif
+
 		return;
 	}
 
@@ -4061,6 +4260,7 @@ static void dispc_error_worker(struct work_struct *work)
 			if (mgr->id == OMAP_DSS_CHANNEL_DIGIT) {
 				if(!mgr->device->first_vsync){
 					DSSERR("First SYNC_LOST..TV ignoring\n");
+					break;
 				}
 
 				manager = mgr;
@@ -4157,6 +4357,24 @@ static void dispc_error_worker(struct work_struct *work)
 	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 
 	dispc_runtime_put();
+}
+
+void omap_dispc_set_first_vsync(enum omap_channel channel, bool enable)
+{
+	int i;
+
+	DSSDBG("omap_dispc_set_first_vsync : channel = %d  enable = %d\n",channel, enable);
+
+	for (i = 0; i < omap_dss_get_num_overlay_managers(); ++i) {
+		struct omap_overlay_manager *mgr;
+		mgr = omap_dss_get_overlay_manager(i);
+
+		if (mgr->id == channel) {
+			mgr->device->first_vsync = enable;
+			return;
+		}
+	}
+	DSSERR("fail to match channel to set first_vsync");
 }
 
 int omap_dispc_wait_for_irq_timeout(u32 irqmask, unsigned long timeout)
@@ -4382,6 +4600,12 @@ static int omap_dispchw_probe(struct platform_device *pdev)
 
 	_omap_dispc_initialize_irq();
 
+#if defined(CONFIG_P2_S_CURVE) && defined(CONFIG_P2_GAMMA)
+printk("probe_CONFIG_P2_GAMMA\n");
+	dispc_set_gamma_table();
+	dispc_enable_gamma(OMAP_DSS_CHANNEL_LCD, 0);
+	dispc_enable_gamma(OMAP_DSS_CHANNEL_LCD2, 0);
+#endif
 	rev = dispc_read_reg(DISPC_REVISION);
 	dev_dbg(&pdev->dev, "OMAP DISPC rev %d.%d\n",
 	       FLD_GET(rev, 7, 4), FLD_GET(rev, 3, 0));
@@ -4430,3 +4654,16 @@ void dispc_uninit_platform_driver(void)
 {
 	return platform_driver_unregister(&omap_dispchw_driver);
 }
+
+static u32 __init gamma_rgb_data_dispc(char *str)
+{
+	int output[3]={0,};
+
+	sscanf(str,"%d,%d,%d",&output[0],&output[1],&output[2]);
+	lcd_gamma_rgb.red = output[0];
+	lcd_gamma_rgb.green = output[1];
+	lcd_gamma_rgb.blue= output[2];
+
+	return 1;
+}
+__setup("RGB=", gamma_rgb_data_dispc);

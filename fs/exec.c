@@ -1495,7 +1495,11 @@ static int do_execve_common(const char *filename,
 	if (retval < 0)
 		goto out;
 
+#ifdef CONFIG_CCSECURITY
+	retval = ccs_search_binary_handler(bprm, regs);
+#else
 	retval = search_binary_handler(bprm,regs);
+#endif
 	if (retval < 0)
 		goto out;
 

@@ -30,6 +30,10 @@
 
 #include <linux/i2c/twl.h>
 
+#if defined(CONFIG_RTC_INTF_DRM_DEV)
+#include <linux/sched.h>
+#include <linux/wait.h>
+#endif
 
 /*
  * RTC block register offsets (use TWL_MODULE_RTC)
@@ -133,6 +137,13 @@ static const u8 twl6030_rtc_reg_map[] = {
 #define ALL_TIME_REGS		6
 
 /*----------------------------------------------------------------------*/
+#if defined(CONFIG_RTC_INTF_DRM_DEV)
+extern wait_queue_head_t drm_wait_queue;
+extern unsigned long drm_diff_time;
+extern int drm_sign;
+extern struct spinlock drm_lock;
+#endif
+
 static u8  *rtc_reg_map;
 
 /*
@@ -294,6 +305,41 @@ static int twl_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	unsigned char save_control;
 	unsigned char rtc_data[ALL_TIME_REGS + 1];
 	int ret;
+
+	#if defined(CONFIG_RTC_INTF_DRM_DEV)
+	struct rtc_time tm_temp;
+	unsigned long prev_time, now;
+
+	ret = rtc_tm_to_time(tm, &now);
+	if(ret != 0)
+		return -1;
+
+	/* read time */
+	if(twl_rtc_read_time(dev, &tm_temp) != 0) {
+		printk("twl_rtc_read_time() failed\n");
+		return -1;
+	}
+
+	ret = rtc_tm_to_time(&tm_temp, &prev_time);
+	if(ret != 0)
+		return -1;
+
+	spin_lock(&drm_lock);
+	if(now < prev_time) {
+		drm_diff_time = prev_time - now;
+		drm_sign = 1;
+	}
+	else {
+		drm_diff_time = now - prev_time;
+		drm_sign = -1;
+	}
+	spin_unlock(&drm_lock);
+	/* Don't wake up DRM secure clock driver if there are no diffence between old and new RTC valuue */
+	if ( drm_diff_time != 0 )
+	{
+		wake_up(&drm_wait_queue);
+	}
+	#endif 
 
 	rtc_data[1] = bin2bcd(tm->tm_sec);
 	rtc_data[2] = bin2bcd(tm->tm_min);
@@ -562,6 +608,11 @@ static void twl_rtc_shutdown(struct platform_device *pdev)
 	/* mask timer interrupts, but leave alarm interrupts on to enable
 	   power-on when alarm is triggered */
 	mask_rtc_irq_bit(BIT_RTC_INTERRUPTS_REG_IT_TIMER_M);
+#ifdef CONFIG_ANDROID
+	/* mask alarm interrupts as well so that we don't get powered on
+	   when alarm is triggered on android */
+	mask_rtc_irq_bit(BIT_RTC_INTERRUPTS_REG_IT_ALARM_M);
+#endif
 }
 
 #ifdef CONFIG_PM

@@ -415,6 +415,11 @@ static int omap2430_musb_init(struct musb *musb)
 
 	setup_timer(&musb_idle_timer, musb_do_idle, (unsigned long) musb);
 
+	if (musb->xceiv->last_event !=  USB_EVENT_NONE) {
+		atomic_notifier_call_chain(&musb->xceiv->notifier,
+				musb->xceiv->last_event, NULL);
+	}
+
 	return 0;
 
 err2:

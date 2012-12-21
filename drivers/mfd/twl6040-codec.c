@@ -669,6 +669,15 @@ static int __devinit twl6040_probe(struct platform_device *pdev)
 	twl6040->dev = &pdev->dev;
 	mutex_init(&twl6040->mutex);
 	mutex_init(&twl6040->io_mutex);
+	
+	if (pdata->init) {
+		ret = pdata->init();
+		if (ret) {
+			dev_err(twl6040->dev, "Platform init failed %d\n",
+				ret);
+			goto init_err;
+		}
+	}		
 
 	if (pdata->init) {
 		ret = pdata->init();
@@ -812,6 +821,9 @@ static int __devexit twl6040_remove(struct platform_device *pdev)
 
 	if (pdata->put_ext_clk32k)
 		pdata->put_ext_clk32k();
+	
+	if (pdata->exit)
+		pdata->exit();
 
 	if (pdata->exit)
 		pdata->exit();

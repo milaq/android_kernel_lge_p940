@@ -48,6 +48,7 @@
 
 #define UART_OMAP_IIR_ID		0x3e
 #define UART_OMAP_IIR_RX_TIMEOUT	0xc
+#define RUNTIME_SYSC	0X0D  //by Joshua
 
 static struct uart_omap_port *ui[OMAP_MAX_HSUART_PORTS];
 
@@ -371,6 +372,13 @@ static void serial_omap_start_tx(struct uart_port *port)
 
 	xmit = &up->port.state->xmit;
 
+	if (up->use_dma){
+		if(uart_circ_chars_pending(xmit) == 0){
+			printk("serial_omap_start_tx::tx_buf_size = 0\n");
+			return;
+		}
+	}
+	
 	if (up->uart_dma.tx_dma_channel == OMAP_UART_DMA_CH_FREE) {
 		serial_omap_port_enable(up);
 		ret = omap_request_dma(up->uart_dma.uart_dma_tx,
@@ -1196,6 +1204,13 @@ serial_omap_console_setup(struct console *co, char *options)
 	if (options)
 		uart_parse_options(options, &baud, &parity, &bits, &flow);
 
+#ifdef CONFIG_MACH_LGE
+	else {
+		co->index = -1;
+		return -ENODEV;
+	}
+#endif
+
 	return uart_set_options(&up->port, co, baud, parity, bits, flow);
 }
 
@@ -1215,6 +1230,82 @@ static void serial_omap_add_console_port(struct uart_omap_port *up)
 }
 
 #define OMAP_CONSOLE	(&serial_omap_console)
+
+#if defined(CONFIG_LGE_FELICA)
+void serial_omap_enable_console_port(void)
+{
+       printk("serial_omap_enable_console_port()\n");
+	register_console(OMAP_CONSOLE);
+}
+
+EXPORT_SYMBOL(serial_omap_enable_console_port);
+int serial_omap_disable_console_port(void)
+{
+       printk("serial_omap_disable_console_port()\n");
+	unregister_console(OMAP_CONSOLE);
+}
+EXPORT_SYMBOL(serial_omap_disable_console_port);
+#endif
+
+#ifdef CONFIG_OMAP_UART4_EARLY_PRINTK
+#include <plat/io.h>
+
+/* omap uart4 phy address : 0x4806e000 */
+static void *omap_uart4_base = NULL;
+static unsigned early_console_enabled = 0;
+
+static void early_console_putc(char c)
+{
+	int i;
+
+	for (i = 0; i < 0x1000; i++) {
+		/* Transmit fifo not full? */
+		if (omap_readl(OMAP4_UART4_BASE + 0x14) & 0x40)
+			break;
+	}
+	omap_writel((unsigned)c, OMAP4_UART4_BASE + 0x0);
+}
+
+static void early_console_write(struct console *con, const char *s,
+				unsigned size)
+{
+	while(size--) {
+		if ('\n' == *s)
+			early_console_putc('\r');
+		early_console_putc(*s++);
+	}
+}
+
+asmlinkage void early_console_printk(const char *fmt, va_list args)
+{
+	char buf[512] = {0, };
+	int n;
+
+	if (early_console_enabled == 0)
+		return;
+
+	n = vscnprintf(buf, sizeof(buf), fmt, args);
+	early_console_write(NULL, buf, n);
+}
+
+static struct console omap_early_printk = {
+	.name  = "earlyprintk",
+	.write = early_console_write,
+	.flags = CON_PRINTBUFFER | CON_BOOT,
+	.index = -1,
+};
+
+int __init setup_early_printk(char *buf)
+{
+	early_console_enabled = 1;
+	printk("****************** early printk ***********************\n");
+
+	register_console(&omap_early_printk);
+	return 0;
+}
+
+core_initcall(setup_early_printk);
+#endif /* CONFIG_OMAP_UART4_ELARY_PRINTK */
 
 #else
 
@@ -1424,6 +1515,7 @@ static void uart_tx_dma_callback(int lch, u16 ch_status, void *data)
 		up->uart_dma.tx_dma_used = false;
 		spin_unlock(&(up->uart_dma.tx_lock));
 	} else {
+		serial_out(up, UART_OMAP_SYSC, RUNTIME_SYSC);   // by Joshua
 		omap_stop_dma(up->uart_dma.tx_dma_channel);
 		serial_omap_continue_tx(up);
 	}
@@ -1658,9 +1750,18 @@ static void omap_uart_restore_context(struct uart_omap_port *up)
 static int omap_serial_runtime_suspend(struct device *dev)
 {
 	struct uart_omap_port *up = dev_get_drvdata(dev);
+	struct omap_device *od;
 
 	if (!up)
 		goto done;
+
+	if (up->use_dma && cpu_is_omap44xx()) {
+		/* NO TX_DMA WAKEUP SO KEEP IN NO IDLE MODE */
+		od = to_omap_device(up->pdev);
+		omap_hwmod_set_slave_idlemode(od->hwmods[0],
+					HWMOD_IDLEMODE_FORCE);
+		serial_out(up, UART_OMAP_SYSC, 0x2);
+	}
 
 	if (up->rts_mux_driver_control) {
 		omap_rts_mux_write(MUX_PULL_UP, up->port.line);

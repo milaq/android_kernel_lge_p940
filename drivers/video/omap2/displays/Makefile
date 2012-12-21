@@ -8,3 +8,10 @@ obj-$(CONFIG_PANEL_TPO_TD043MTEA1) += panel-tpo-td043mtea1.o
 obj-$(CONFIG_PANEL_ACX565AKM) += panel-acx565akm.o
 
 obj-$(CONFIG_PANEL_TC358765) += panel-tc358765.o
+
+obj-$(CONFIG_PANEL_LGHDK) += panel-lghdk.o
+obj-$(CONFIG_PANEL_LH430WV4_SD02) += panel-lh430wv4-sd02.o
+obj-$(CONFIG_PANEL_TX11D101VM_0EAA) += panel-tx11d101vm-0eaa.o
+obj-$(CONFIG_PANEL_DX11D100VM) += panel-dx11d100vm.o
+obj-$(CONFIG_PANEL_TX11D108VM_0BAA) += panel-tx11d108vm-0baa.o
+obj-$(CONFIG_PANEL_HX8389) += panel-hx8389.o

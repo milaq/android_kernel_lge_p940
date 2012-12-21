@@ -845,7 +845,7 @@ static int __init setup_emif_interrupts(u32 emif_nr)
 	__raw_writel(0xFFFFFFFF, base + OMAP44XX_EMIF_IRQSTATUS_LL);
 
 	/* Enable the relevant interrupts for both LL and SYS */
-	temp = OMAP44XX_REG_EN_TA_SYS_MASK | OMAP44XX_REG_EN_ERR_SYS_MASK;
+	temp = OMAP44XX_REG_EN_ERR_SYS_MASK;	
 	__raw_writel(temp, base + OMAP44XX_EMIF_IRQENABLE_SET_SYS);
 	__raw_writel(temp, base + OMAP44XX_EMIF_IRQENABLE_SET_LL);
 

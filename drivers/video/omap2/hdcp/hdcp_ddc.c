@@ -31,18 +31,16 @@ static int hdcp_suspend_resume_auto_ri(enum ri_suspend_resume state)
 {
 	static u8 OldRiStat, OldRiCommand;
 	u8 TimeOut = 10;
+	HDCP_DBG_S();
 
 	/* Suspend Auto Ri in order to allow FW access MDDC bus.
 	 * Poll 0x72:0x26[0] for MDDC bus availability or timeout
 	 */
-
-	DBG("hdcp_suspend_resume_auto_ri() state=%s",
-		state == AUTO_RI_SUSPEND ? "SUSPEND" : "RESUME");
+	DBG("HDCP : %s() state=%s", __func__, state == AUTO_RI_SUSPEND ? "SUSPEND" : "RESUME");
 
 	if (state == AUTO_RI_SUSPEND) {
 		/* Save original Auto Ri state */
-		OldRiCommand = RD_FIELD_32(hdcp.hdmi_wp_base_addr +
-					   HDMI_IP_CORE_SYSTEM,
+		OldRiCommand = RD_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
 					   HDMI_IP_CORE_SYSTEM__RI_CMD, 0, 0);
 
 		/* Disable Auto Ri */
@@ -51,8 +49,7 @@ static int hdcp_suspend_resume_auto_ri(enum ri_suspend_resume state)
 		/* Wait for HW to release MDDC bus */
 		/* TODO: while loop / timeout to be enhanced */
 		while (--TimeOut) {
-			if (!RD_FIELD_32(hdcp.hdmi_wp_base_addr +
-					 HDMI_IP_CORE_SYSTEM,
+			if (!RD_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
 					 HDMI_IP_CORE_SYSTEM__RI_STAT, 0, 0))
 				break;
 		}
@@ -63,15 +60,18 @@ static int hdcp_suspend_resume_auto_ri(enum ri_suspend_resume state)
 			return -HDCP_DDC_ERROR;
 		}
 
-		OldRiStat = RD_FIELD_32(hdcp.hdmi_wp_base_addr +
-					HDMI_IP_CORE_SYSTEM,
+		OldRiStat = RD_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
 					HDMI_IP_CORE_SYSTEM__RI_STAT, 0, 0);
 	} else {
 		/* If Auto Ri was enabled before it was suspended */
-		if ((OldRiStat) && (OldRiCommand))
+		if ((OldRiStat) && (OldRiCommand)) {
 			/* Re-enable Auto Ri */
 			hdcp_lib_auto_ri_check(false);
+		} else {
+			printk(KERN_ERR "HDCP: Resuming Auto Ri ...\n");
+		}			
 	}
+	HDCP_DBG_E();
 
 	return HDCP_OK;
 }
@@ -88,10 +88,15 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 	u32 time_elapsed_ms = 0;
 	u32 i, size;
 	unsigned long flags;
+	int status = 0;
+	HDCP_DBG_S();
 
 #ifdef _9032_AUTO_RI_
-	if (hdcp_suspend_resume_auto_ri(AUTO_RI_SUSPEND))
+	if (hdcp_suspend_resume_auto_ri(AUTO_RI_SUSPEND)) {
+		DBG("HDCP : %s() HDCP_DDC_ERROR [1]", __func__);
+		HDCP_DBG_E();
 		return -HDCP_DDC_ERROR;
+	}	
 #endif
 
 	spin_lock_irqsave(&hdcp.spinlock, flags);
@@ -112,8 +117,7 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 
 		/* Read to flush */
 		RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
-			  HDMI_IP_CORE_SYSTEM__DDC_ADDR +
-			  i * sizeof(uint32_t));
+			  HDMI_IP_CORE_SYSTEM__DDC_ADDR + i * sizeof(uint32_t));
 	}
 
 	spin_unlock_irqrestore(&hdcp.spinlock, flags);
@@ -127,36 +131,30 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 	while ((i < size) && (hdcp.pending_disable == 0)) {
 		if (operation == DDC_WRITE) {
 			/* Write data to DDC FIFO as long as it is NOT full */
-			if (RD_FIELD_32(hdcp.hdmi_wp_base_addr +
-				       HDMI_IP_CORE_SYSTEM,
-				       HDMI_IP_CORE_SYSTEM__DDC_STATUS, 3, 3)
-									== 0) {
-				WR_REG_32(hdcp.hdmi_wp_base_addr +
-					  HDMI_IP_CORE_SYSTEM,
-					  HDMI_IP_CORE_SYSTEM__DDC_DATA,
-					  mddc_cmd->pdata[i++]);
+			if(RD_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
+				       HDMI_IP_CORE_SYSTEM__DDC_STATUS, 3, 3) == 0)
+			{
+				WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
+					  HDMI_IP_CORE_SYSTEM__DDC_DATA, mddc_cmd->pdata[i++]);
 				do_gettimeofday(&t1);
 			}
-		} else if (operation == DDC_READ) {
+		}
+		else if (operation == DDC_READ) {
 			/* Read from DDC FIFO as long as it is NOT empty */
-			if (RD_FIELD_32(hdcp.hdmi_wp_base_addr +
-				       HDMI_IP_CORE_SYSTEM,
-				       HDMI_IP_CORE_SYSTEM__DDC_STATUS, 2, 2)
-									== 0) {
-				mddc_cmd->pdata[i++] =
-					RD_REG_32(hdcp.hdmi_wp_base_addr +
-					  HDMI_IP_CORE_SYSTEM,
-					  HDMI_IP_CORE_SYSTEM__DDC_DATA);
+			if(RD_FIELD_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
+				       HDMI_IP_CORE_SYSTEM__DDC_STATUS, 2, 2) == 0)
+			{
+				mddc_cmd->pdata[i++] = RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
+								 HDMI_IP_CORE_SYSTEM__DDC_DATA);
 				do_gettimeofday(&t1);
 			}
 		}
 
 		do_gettimeofday(&t2);
-		time_elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 +
-				  (t2.tv_usec - t1.tv_usec) / 1000;
+		time_elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 + (t2.tv_usec - t1.tv_usec) / 1000;
 
 		if (time_elapsed_ms > HDCP_DDC_TIMEOUT) {
-			DBG("DDC timeout - no data during %d ms - "
+			DBG("HDCP : DDC timeout - no data during %d ms - "
 			    "status=%02x %u",
 					HDCP_DDC_TIMEOUT,
 					RD_REG_32(hdcp.hdmi_wp_base_addr +
@@ -175,15 +173,12 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 			   HDMI_IP_CORE_SYSTEM__DDC_STATUS) != 0x4) &&
 	       (hdcp.pending_disable == 0)) {
 		do_gettimeofday(&t2);
-		time_elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 +
-				  (t2.tv_usec - t1.tv_usec) / 1000;
+		time_elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 + (t2.tv_usec - t1.tv_usec) / 1000;
 
-		if (time_elapsed_ms > HDCP_DDC_TIMEOUT) {
-			DBG("DDC timeout - FIFO not getting empty - "
-			    "status=%02x",
-				RD_REG_32(hdcp.hdmi_wp_base_addr +
-					  HDMI_IP_CORE_SYSTEM,
-					  HDMI_IP_CORE_SYSTEM__DDC_STATUS));
+		if(time_elapsed_ms > HDCP_DDC_TIMEOUT) {
+			DBG("HDCP : DDC timeout - FIFO not getting empty - status=%02x",
+						RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
+							  HDMI_IP_CORE_SYSTEM__DDC_STATUS));
 			goto ddc_error;
 		}
 	}
@@ -191,7 +186,7 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 	if (hdcp.pending_disable)
 		goto ddc_abort;
 
-	DBG("DDC transfer: bytes: %d time_us: %lu status: %x",
+	DBG("HDCP : DDC transfer: bytes: %d time_us: %lu status: %x",
 		i,
 		(t2.tv_sec - t0.tv_sec) * 1000000 + (t2.tv_usec - t0.tv_usec),
 		RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
@@ -209,20 +204,26 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 #ifdef _9032_AUTO_RI_
 	/* Re-enable Auto Ri */
 	if (hdcp_suspend_resume_auto_ri(AUTO_RI_RESUME))
+	{
+		DBG("HDCP : %s() HDCP_DDC_ERROR [2]", __func__);
+		HDCP_DBG_E();
 		return -HDCP_DDC_ERROR;
+	}	
 #endif
-
+	HDCP_DBG_E();
 	return HDCP_OK;
 
 ddc_error:
 	hdcp_ddc_abort();
+	DBG("HDCP : %s() HDCP_DDC_ERROR [3]", __func__);
+	HDCP_DBG_E();	
 	return -HDCP_DDC_ERROR;
 
 ddc_abort:
-	DBG("DDC transfer aborted - status=%02x",
+	DBG("HDCP : DDC transfer aborted - status=%02x",
 			RD_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
 				  HDMI_IP_CORE_SYSTEM__DDC_STATUS));
-
+	HDCP_DBG_E();
 	return HDCP_OK;
 }
 
@@ -230,8 +231,7 @@ ddc_abort:
  * Function: hdcp_ddc_operation
  *-----------------------------------------------------------------------------
  */
-static int hdcp_ddc_operation(u16 no_bytes, u8 addr, u8 *pdata,
-			      enum ddc_operation operation)
+static int hdcp_ddc_operation(u16 no_bytes, u8 addr, u8 * pdata, enum ddc_operation operation)
 {
 	mddc_type mddc;
 
@@ -242,16 +242,19 @@ static int hdcp_ddc_operation(u16 no_bytes, u8 addr, u8 *pdata,
 	mddc.nbytes_msb	= (no_bytes & 0x300) >> 8;
 	mddc.dummy	= 0;
 	mddc.pdata	= pdata;
+	HDCP_DBG_S();
 
-	if (operation == DDC_READ)
+	if (operation == DDC_READ) {
 		mddc.cmd = MASTER_CMD_SEQ_RD;
-	else
+	} else {
 		mddc.cmd = MASTER_CMD_SEQ_WR;
+	}
 
-	DBG("DDC %s: offset=%02x len=%d %u", operation == DDC_READ ?
+	DBG("HDCP : DDC %s: offset=%02x len=%d %u", operation == DDC_READ ?
 					     "READ" : "WRITE",
 					     addr, no_bytes,
 					     jiffies_to_msecs(jiffies));
+	HDCP_DBG_E();
 
 	return hdcp_start_ddc_transfer(&mddc, operation);
 }
@@ -262,6 +265,7 @@ static int hdcp_ddc_operation(u16 no_bytes, u8 addr, u8 *pdata,
  */
 int hdcp_ddc_read(u16 no_bytes, u8 addr, u8 *pdata)
 {
+	DBG("HDCP : %s()", __func__);
 	return hdcp_ddc_operation(no_bytes, addr, pdata, DDC_READ);
 }
 
@@ -271,6 +275,7 @@ int hdcp_ddc_read(u16 no_bytes, u8 addr, u8 *pdata)
  */
 int hdcp_ddc_write(u16 no_bytes, u8 addr, u8 *pdata)
 {
+	DBG("HDCP : %s()", __func__);
 	return hdcp_ddc_operation(no_bytes, addr, pdata, DDC_WRITE);
 }
 
@@ -281,6 +286,7 @@ int hdcp_ddc_write(u16 no_bytes, u8 addr, u8 *pdata)
 void hdcp_ddc_abort(void)
 {
 	unsigned long flags;
+	HDCP_DBG_S();
 
 	/* In case of I2C_NO_ACK error, do not abort DDC to avoid
 	 * DDC lockup
@@ -292,6 +298,8 @@ void hdcp_ddc_abort(void)
 	spin_lock_irqsave(&hdcp.spinlock, flags);
 
 	/* Abort Master DDC operation and Clear FIFO pointer */
+	DBG_E("<%s> /* Abort Master DDC operation and Clear FIFO pointer %d*/\n",
+	    __func__, __LINE__);
 	WR_REG_32(hdcp.hdmi_wp_base_addr + HDMI_IP_CORE_SYSTEM,
 		  HDMI_IP_CORE_SYSTEM__DDC_CMD, MASTER_CMD_ABORT);
 
@@ -307,4 +315,6 @@ void hdcp_ddc_abort(void)
 		  HDMI_IP_CORE_SYSTEM__DDC_CMD);
 
 	spin_unlock_irqrestore(&hdcp.spinlock, flags);
+
+	HDCP_DBG_E();
 }

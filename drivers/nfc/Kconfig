@@ -14,7 +14,7 @@ menuconfig NFC_DEVICES
 
 if NFC_DEVICES
 
-config PN544_NFC
+config LGE_NFC_PN544
 	tristate "PN544 NFC driver"
 	depends on I2C
 	select CRC_CCITT
@@ -26,5 +26,11 @@ config PN544_NFC
 	  To compile this driver as a module, choose m here. The module will
 	  be called pn544.
 
-
+config LGE_NFC_PRESTANBY
+	bool "NFC STANBY MODE"
+	default n
+	---help---
+	  Say yes if you want to change a power state of pn544 to stanby mode in Kernel.
+	  If unsure, say N here.
+	  	  
 endif # NFC_DEVICES

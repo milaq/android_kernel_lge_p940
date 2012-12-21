@@ -2,7 +2,6 @@
  * Squashfs - a compressed read only filesystem for Linux
  *
  * Copyright (c) 2010 LG Electronics
- * Chan Jeong <chan.jeong@lge.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License

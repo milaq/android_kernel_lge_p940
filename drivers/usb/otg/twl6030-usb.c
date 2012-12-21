@@ -283,9 +283,15 @@ static ssize_t twl6030_usb_vbus_show(struct device *dev,
 }
 static DEVICE_ATTR(vbus, 0444, twl6030_usb_vbus_show, NULL);
 
-static irqreturn_t twl6030_usb_irq(int irq, void *_twl)
+static struct work_struct twl6030_usb_irq_wq;
+static struct work_struct twl6030_usbotg_irq_wq;
+
+void *tmp_twl;
+void *tmp_twl_otg;
+
+static void twl6030_usb_irq_wq_func(struct work_struct *twl6030_usb_irq_wq)
 {
-	struct twl6030_usb *twl = _twl;
+	struct twl6030_usb *twl = tmp_twl;
 	int status;
 	u8 vbus_state, hw_state, misc2_data;
 	unsigned charger_type;
@@ -359,11 +365,24 @@ vbus_notify:
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t twl6030_usbotg_irq(int irq, void *_twl)
+static irqreturn_t twl6030_usb_irq(int irq, void *_twl)
+{
+	tmp_twl = _twl;
+
+	#if(ENABLE_QUEUE_WORK)
+	wake_lock_timeout(&twl_lock,2*HZ);	
+	queue_work(twl6030_usb_wq, &twl6030_usb_irq_wq);
+	#else
+	schedule_work(&twl6030_usb_irq_wq);
+	#endif
+	return IRQ_HANDLED;
+}
+
+static void twl6030_usbotg_irq_wq_func(struct work_struct *twl6030_usbotg_irq_wq)
 {
 
 #ifndef CONFIG_USB_MUSB_PERIPHERAL
-	struct twl6030_usb *twl = _twl;
+	struct twl6030_usb *twl = tmp_twl_otg; // hunsoo.lee _twl;
 	int status = USB_EVENT_NONE;
 	u8 hw_state, misc2_data;
 
@@ -398,6 +417,14 @@ static irqreturn_t twl6030_usbotg_irq(int irq, void *_twl)
 	twl6030_writeb(twl, TWL_MODULE_USB, status, USB_ID_INT_LATCH_CLR);
 #endif
 
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t twl6030_usbotg_irq(int irq, void *_twl)
+{
+	tmp_twl_otg= _twl;
+
+	schedule_work(&twl6030_usbotg_irq_wq);
 	return IRQ_HANDLED;
 }
 
@@ -565,6 +592,9 @@ static int __devinit twl6030_usb_probe(struct platform_device *pdev)
 
 	INIT_WORK(&twl->set_vbus_work, otg_set_vbus_work);
 
+	INIT_WORK(&twl6030_usb_irq_wq, twl6030_usb_irq_wq_func);
+	INIT_WORK(&twl6030_usbotg_irq_wq, twl6030_usbotg_irq_wq_func);
+
 	twl->vbus_enable = false;
 	twl->irq_enabled = true;
 	status = request_threaded_irq(twl->irq1, NULL, twl6030_usbotg_irq,
@@ -634,6 +664,13 @@ static struct platform_driver twl6030_usb_driver = {
 
 static int __init twl6030_usb_init(void)
 {
+	#if(ENABLE_QUEUE_WORK)
+    twl6030_usb_wq = create_singlethread_workqueue("twl6030_usb_wq");
+	if (!twl6030_usb_wq) {		
+		dbg_xceiv("[%s] twl6030_usb_wq is not created  \n",__func__);
+	}
+	#endif
+	
 	return platform_driver_register(&twl6030_usb_driver);
 }
 subsys_initcall(twl6030_usb_init);
@@ -641,6 +678,12 @@ subsys_initcall(twl6030_usb_init);
 static void __exit twl6030_usb_exit(void)
 {
 	platform_driver_unregister(&twl6030_usb_driver);
+
+	#if(ENABLE_QUEUE_WORK)
+	destroy_workqueue(twl6030_usb_wq);
+	twl6030_usb_wq = NULL;
+	#endif
+
 }
 module_exit(twl6030_usb_exit);
 

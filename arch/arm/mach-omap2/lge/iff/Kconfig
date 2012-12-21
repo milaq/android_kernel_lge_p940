@@ -1,0 +1,16 @@
+#
+# LGE IFF
+#
+
+config MACH_LGE_IFF
+	bool "LGE IFF board"
+	select TWL6030_GPADC
+	select INPUT_MISC
+	select HWMON
+	select OMAP_PACKAGE_CBL
+	select OMAP_PACKAGE_CBS
+	select REGULATOR_FIXED_VOLTAGE
+	select OMAP_TPS6236X
+	select TWL6030_POWEROFF
+	select INPUT_TWL6030_PWRBUTTON
+	select OMAP_REBOOT_REASON

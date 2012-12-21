@@ -127,6 +127,7 @@ struct omx_disc_req {
 /* temporarily exposed to user space too */
 struct omx_conn_req {
 	char name[48];
+	char time_stamp[20];
 } __packed;
 
 /* the packet structure (actual message sent to omx service) */

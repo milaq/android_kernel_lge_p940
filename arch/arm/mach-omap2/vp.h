@@ -78,6 +78,11 @@ struct omap_vp_common {
 	const struct omap_vp_ops *ops;
 };
 
+struct omap_vp_volt_limits {
+	u32 vddmin;
+	u32 vddmax;
+};
+
 /**
  * struct omap_vp_instance - VP register offsets (per-VDD)
  * @common: pointer to struct omap_vp_common * for this SoC
@@ -100,6 +105,7 @@ struct omap_vp_instance {
 	u8 voltage;
 	u8 id;
 	bool enabled;
+	struct omap_vp_volt_limits *vlimits;
 };
 
 extern struct omap_vp_instance omap3_vp_mpu;

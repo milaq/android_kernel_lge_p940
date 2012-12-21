@@ -297,6 +297,20 @@
 
 #include "gadget_chips.h"
 
+#define VENDOR_NAME_LGE	"LGE"
+
+#define PRODUCT_NAME_ANDROID	"P2"
+#define PRODUCT_NAME_EXTERNAL 	"P2 SD Card"
+
+static const char vendor_name[] = VENDOR_NAME_LGE;
+static const char product_name[] = PRODUCT_NAME_ANDROID;
+static const char product_name_external[] = PRODUCT_NAME_EXTERNAL;
+
+enum
+{
+	INTERNAL_MASS_STORAGE = 0,
+	EXTERNAL_MASS_STORAGE = 1
+};
 
 /*------------------------------------------------------------------------*/
 
@@ -404,7 +418,7 @@ struct fsg_common {
 	 * Vendor (8 chars), product (16 chars), release (4
 	 * hexadecimal digits) and NUL byte
 	 */
-	char inquiry_string[8 + 16 + 4 + 1];
+	char inquiry_string[FSG_MAX_LUNS][8 + 16 + 4 + 1]; //P2 GB Sync 
 
 	struct kref		ref;
 };
@@ -625,8 +639,15 @@ static int fsg_setup(struct usb_function *f,
 		if (ctrl->bRequestType !=
 		    (USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE))
 			break;
+			
+		VDBG(fsg, "fsg->interface_number = %d \n",fsg->interface_number);		
+		#if(1)
+		if (w_value != 0)
+			return -EDOM;	
+		#else
 		if (w_index != fsg->interface_number || w_value != 0)
 			return -EDOM;
+		#endif
 
 		/*
 		 * Raise an exception to stop the current operation
@@ -640,8 +661,16 @@ static int fsg_setup(struct usb_function *f,
 		if (ctrl->bRequestType !=
 		    (USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE))
 			break;
+
+		VDBG(fsg, "fsg->interface_number = %d \n",fsg->interface_number);		
+		#if(1)
+		if (w_value != 0)
+			return -EDOM;	
+		#else
 		if (w_index != fsg->interface_number || w_value != 0)
 			return -EDOM;
+		#endif
+
 		VDBG(fsg, "get max LUN\n");
 		*(u8 *)req->buf = fsg->common->nluns - 1;
 
@@ -1217,7 +1246,7 @@ static int do_inquiry(struct fsg_common *common, struct fsg_buffhd *bh)
 	buf[5] = 0;		/* No special options */
 	buf[6] = 0;
 	buf[7] = 0;
-	memcpy(buf + 8, common->inquiry_string, sizeof common->inquiry_string);
+	memcpy(buf + 8, common->inquiry_string[common->lun], sizeof common->inquiry_string[0]);
 	return 36;
 }
 
@@ -1380,36 +1409,13 @@ static int do_mode_sense(struct fsg_common *common, struct fsg_buffhd *bh)
 	} else {			/* MODE_SENSE_10 */
 		buf[3] = (curlun->ro ? 0x80 : 0x00);		/* WP, DPOFUA */
 		buf += 8;
+	//	limit = 65535;		/* Should really be FSG_BUFLEN */
 		limit = 65535;		/* Should really be FSG_BUFLEN */
 	}
 
 	/* No block descriptors */
 
-	/*
-	 * The mode pages, in numerical order.  The only page we support
-	 * is the Caching page.
-	 */
-	if (page_code == 0x08 || all_pages) {
-		valid_page = 1;
-		buf[0] = 0x08;		/* Page code */
-		buf[1] = 10;		/* Page length */
-		memset(buf+2, 0, 10);	/* None of the fields are changeable */
-
-		if (!changeable_values) {
-			buf[2] = 0x04;	/* Write cache enable, */
-					/* Read cache not disabled */
-					/* No cache retention priorities */
-			put_unaligned_be16(0xffff, &buf[4]);
-					/* Don't disable prefetch */
-					/* Minimum prefetch = 0 */
-			put_unaligned_be16(0xffff, &buf[8]);
-					/* Maximum prefetch */
-			put_unaligned_be16(0xffff, &buf[10]);
-					/* Maximum prefetch ceiling */
-		}
-		buf += 12;
-	}
-
+	valid_page = 1;
 	/*
 	 * Check that a valid page was requested and the mode data length
 	 * isn't too long.
@@ -2694,7 +2700,7 @@ static int fsg_main_thread(void *common_)
 static DEVICE_ATTR(ro, 0644, fsg_show_ro, fsg_store_ro);
 static DEVICE_ATTR(nofua, 0644, fsg_show_nofua, fsg_store_nofua);
 static DEVICE_ATTR(file, 0644, fsg_show_file, fsg_store_file);
-
+static DEVICE_ATTR(cdrom, 0644, fsg_show_cdrom, fsg_store_cdrom);
 
 /****************************** FSG COMMON ******************************/
 
@@ -2725,6 +2731,15 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 	struct fsg_lun_config *lcfg;
 	int nluns, i, rc;
 	char *pathbuf;
+
+	int j;
+
+	cfg->nluns = 2;
+	for (i = 0; i < cfg->nluns; i++)
+		cfg->luns[i].removable = 1;	
+	cfg->vendor_name = VENDOR_NAME_LGE;	
+	cfg->product_name =PRODUCT_NAME_ANDROID; //internel memory inquiry 
+
 
 	/* Find out how many LUNs there should be */
 	nluns = cfg->nluns;
@@ -2806,7 +2821,9 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		rc = device_create_file(&curlun->dev, &dev_attr_nofua);
 		if (rc)
 			goto error_luns;
-
+                rc = device_create_file(&curlun->dev, &dev_attr_cdrom);
+                if (rc)
+                        goto error_luns;
 		if (lcfg->filename) {
 			rc = fsg_lun_open(curlun, lcfg->filename);
 			if (rc)
@@ -2848,14 +2865,24 @@ buffhds_first_it:
 			i = 0x0399;
 		}
 	}
-	snprintf(common->inquiry_string, sizeof common->inquiry_string,
-		 "%-8s%-16s%04x", cfg->vendor_name ?: "Linux",
-		 /* Assume product name dependent on the first LUN */
-		 cfg->product_name ?: (common->luns->cdrom
-				     ? "File-Stor Gadget"
-				     : "File-CD Gadget"),
-		 i);
+	#define OR(x, y) ((x) ? (x) : (y))
 
+	for (j = 0 ; j < nluns; ++j) {
+
+		if( j == EXTERNAL_MASS_STORAGE)	{
+			sprintf(common->inquiry_string[j], "%-8s%-16s%04x", OR(cfg->vendor_name, "Linux   "), product_name_external, i);
+
+		} else {
+			snprintf(common->inquiry_string[j], sizeof common->inquiry_string[j],
+				 "%-8s%-16s%04x",
+				 OR(cfg->vendor_name, "Linux   "),
+				 ///* Assume product name dependent on the first LUN */
+				 OR(cfg->product_name, common->luns->cdrom
+							 ? "File-Stor Gadget"
+							 : "File-CD Gadget	"),
+				 i);
+		}	
+	}
 	/*
 	 * Some peripheral controllers are known not to be able to
 	 * halt bulk endpoints correctly.  If one of them is present,
@@ -2877,6 +2904,7 @@ buffhds_first_it:
 	}
 	init_completion(&common->thread_notifier);
 	init_waitqueue_head(&common->fsg_wait);
+#undef OR
 
 	/* Information */
 	INFO(common, FSG_DRIVER_DESC ", version: " FSG_DRIVER_VERSION "\n");
@@ -2938,6 +2966,7 @@ static void fsg_common_release(struct kref *ref)
 			device_remove_file(&lun->dev, &dev_attr_nofua);
 			device_remove_file(&lun->dev, &dev_attr_ro);
 			device_remove_file(&lun->dev, &dev_attr_file);
+			device_remove_file(&lun->dev, &dev_attr_cdrom);
 			fsg_lun_close(lun);
 			device_unregister(&lun->dev);
 		}

@@ -193,7 +193,7 @@ static void debug_prompt(struct fiq_debugger_state *state)
 int log_buf_copy(char *dest, int idx, int len);
 static void dump_kernel_log(struct fiq_debugger_state *state)
 {
-	char buf[1024];
+	static char buf[1024];
 	int idx = 0;
 	int ret;
 	int saved_oip;

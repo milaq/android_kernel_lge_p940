@@ -1124,6 +1124,10 @@ EXPORT_SYMBOL(sys_close);
  */
 SYSCALL_DEFINE0(vhangup)
 {
+#ifdef CONFIG_CCSECURITY
+	if (!ccs_capable(CCS_SYS_VHANGUP))
+		return -EPERM;
+#endif
 	if (capable(CAP_SYS_TTY_CONFIG)) {
 		tty_vhangup_self();
 		return 0;
