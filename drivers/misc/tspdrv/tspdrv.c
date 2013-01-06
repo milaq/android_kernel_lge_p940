@@ -310,7 +310,7 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
 	int i;
 #endif
 
-        VibeInt8 nForce[1] = {128};
+        VibeInt8 nForce[1] = {96};
 
 	//printk("{tspdrv} : ioctl cmd = %x\n", cmd);
 
