@@ -25,10 +25,13 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/lge/leds_keypad.h>
+#include <linux/wakelock.h>
 
 static int keypad_gpio;
 static int use_hold_key = 0;
 static int hold_key_gpio;
+
+struct wake_lock wlock;
 
 struct keypad_led_data {
 	struct led_classdev keypad_led_class_dev;
@@ -62,6 +65,10 @@ EXPORT_SYMBOL(set_pw_led_on_off);
 static void keypad_led_store(struct led_classdev *led_cdev,
 				enum led_brightness value)
 {
+
+	if (wake_lock_active(&wlock))
+		wake_unlock(&wlock);
+
 	if(led_cdev->br_maintain_trigger == 1){
 		printk(KERN_ERR "[pwr_led]: br_maintain_on trigger is on!\n");
 		return;
@@ -69,6 +76,7 @@ static void keypad_led_store(struct led_classdev *led_cdev,
 
 	if (value == 127) {
 		//printk(KERN_INFO "FRONT_LED: SYSFS_LED On!\n");
+          	wake_lock(&wlock);
 		gpio_set_value(keypad_gpio, 1);
 
 	} else if(value == 255){
@@ -145,6 +153,8 @@ static int __devinit keypad_led_probe(struct platform_device *pdev)
 		kfree(info);
 		return ret;
 	}
+
+	wake_lock_init(&wlock, WAKE_LOCK_SUSPEND, "notificationlight");
 
 	return ret;
 }
