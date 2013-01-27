@@ -1,6 +1,8 @@
 /*
  * Keyboard/Button LED Driver controlled by GPIO
  *
+ * Copyright (C) 2013 Micha LaQua
+ * Copyright (C) 2011 Ricardo Cerqueira
  * Copyright (C) 2011 LGE Inc.
  * Copyright (C) 2010 Texas Instruments
  *
@@ -25,17 +27,28 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/lge/leds_keypad.h>
+#include <linux/delay.h>
+#include <linux/android_alarm.h>
 #include <linux/wakelock.h>
+
+#define TOUCH_DELAY_MSEC    500
 
 static int keypad_gpio;
 static int use_hold_key = 0;
 static int hold_key_gpio;
 
 struct wake_lock wlock;
+struct workqueue_struct *blink_workqueue;
+struct delayed_work  blink_queue;
+struct alarm alarm;
 
 struct keypad_led_data {
 	struct led_classdev keypad_led_class_dev;
 };
+
+long touchdelay;
+int is_blinking = 0;
+
 #if defined(CONFIG_MAX8971_CHARGER)&&  defined(CONFIG_MACH_LGE_P2_DCM)
 int pw_led_on_off=1;
 int cause_of_pw_pressed=0;
@@ -65,9 +78,7 @@ EXPORT_SYMBOL(set_pw_led_on_off);
 static void keypad_led_store(struct led_classdev *led_cdev,
 				enum led_brightness value)
 {
-
-	if (wake_lock_active(&wlock))
-		wake_unlock(&wlock);
+	is_blinking = 0;
 
 	if(led_cdev->br_maintain_trigger == 1){
 		printk(KERN_ERR "[pwr_led]: br_maintain_on trigger is on!\n");
@@ -75,9 +86,10 @@ static void keypad_led_store(struct led_classdev *led_cdev,
 		}
 
 	if (value == 127) {
-		//printk(KERN_INFO "FRONT_LED: SYSFS_LED On!\n");
-          	wake_lock(&wlock);
-		gpio_set_value(keypad_gpio, 1);
+		//printk(KERN_INFO "NOTIFICATION_LED: on\n");
+		wake_lock(&wlock);
+		is_blinking = 1;
+		queue_delayed_work(blink_workqueue, &blink_queue, msecs_to_jiffies(100));
 
 	} else if(value == 255){
 		//printk(KERN_INFO "ALL_LED: SYSFS_LED On!\n");
@@ -98,6 +110,28 @@ static void keypad_led_store(struct led_classdev *led_cdev,
 		cause_of_pw_pressed = 0;
 #endif
 	}
+}
+
+static void led_blinker_alarm(struct alarm *alarm)
+{
+	wake_lock(&wlock);
+	queue_delayed_work(blink_workqueue, &blink_queue, msecs_to_jiffies(100));
+}
+
+static void led_blink_queue(struct work_struct *work)
+{
+	if (is_blinking) {
+		//printk(KERN_INFO "NOTIFICATION_LED: blink\n");
+		gpio_set_value(keypad_gpio, 1);
+		mdelay(touchdelay);
+		gpio_set_value(keypad_gpio, 0);
+		/* Insert a ~4 second pause between pulses */
+		ktime_t delay = ktime_add(alarm_get_elapsed_realtime(), ktime_set(3, 0));
+		alarm_start_range(&alarm, delay, delay);
+	} else {
+		//printk(KERN_INFO "NOTIFICATION_LED: off\n");
+	}
+	wake_unlock(&wlock);
 }
 
 static int __devinit keypad_led_probe(struct platform_device *pdev)
@@ -154,7 +188,12 @@ static int __devinit keypad_led_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	touchdelay = TOUCH_DELAY_MSEC;
 	wake_lock_init(&wlock, WAKE_LOCK_SUSPEND, "notificationlight");
+	blink_workqueue = create_workqueue("notificationlight");
+	INIT_DELAYED_WORK(&blink_queue, led_blink_queue);
+	alarm_init(&alarm, ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
+					led_blinker_alarm);
 
 	return ret;
 }
