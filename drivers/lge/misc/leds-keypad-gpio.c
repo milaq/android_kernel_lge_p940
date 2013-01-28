@@ -31,7 +31,7 @@
 #include <linux/android_alarm.h>
 #include <linux/wakelock.h>
 
-#define TOUCH_DELAY_MSEC    500
+#define TOUCH_DELAY_MSEC    400
 
 static int keypad_gpio;
 static int use_hold_key = 0;
@@ -190,7 +190,7 @@ static int __devinit keypad_led_probe(struct platform_device *pdev)
 
 	touchdelay = TOUCH_DELAY_MSEC;
 	wake_lock_init(&wlock, WAKE_LOCK_SUSPEND, "notificationlight");
-	blink_workqueue = create_workqueue("notificationlight");
+	blink_workqueue = create_singlethread_workqueue("notificationlight");
 	INIT_DELAYED_WORK(&blink_queue, led_blink_queue);
 	alarm_init(&alarm, ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
 					led_blinker_alarm);
