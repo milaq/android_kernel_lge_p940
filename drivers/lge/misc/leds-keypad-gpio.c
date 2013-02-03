@@ -31,7 +31,7 @@
 #include <linux/android_alarm.h>
 #include <linux/wakelock.h>
 
-#define TOUCH_DELAY_MSEC    250
+#define TOUCH_DELAY_MSEC    200
 
 static int keypad_gpio;
 static int use_hold_key = 0;
@@ -123,14 +123,14 @@ static void led_blink_queue(struct work_struct *work)
 	if (is_blinking) {
 		//printk(KERN_INFO "NOTIFICATION_LED: blink\n");
 		gpio_set_value(keypad_gpio, 1);
+		/* if device has a power led, light it up too */
+		if(use_hold_key)
+			gpio_set_value(hold_key_gpio, 1);
 		msleep(touchdelay);
 		gpio_set_value(keypad_gpio, 0);
-		/* if device has a power led, light it up too (in succession) */
-		if(use_hold_key) {
-			gpio_set_value(hold_key_gpio, 1);
-			msleep(touchdelay);
+		if(use_hold_key)
 			gpio_set_value(hold_key_gpio, 0);
-		}
+		
 		/* Insert a ~4 second pause between pulses */
 		ktime_t delay = ktime_add(alarm_get_elapsed_realtime(), ktime_set(3, 0));
 		alarm_start_range(&alarm, delay, delay);
