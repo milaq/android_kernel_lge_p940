@@ -518,6 +518,19 @@ config OMAP4_HSOTG_ED_CORRECTION
 	  order to improve Eye Diagramm. On 4430 CPUs this should
 	  improve Eye Diagram at least 8%.
 
+config OMAP4_OVERCLOCK
+	bool "Sets OMAP4_SILICON_TYPE_PERFORMANCE to enable higher clockrates"
+	depends on ARCH_OMAP4
+	default n
+	help
+	  Overrides OMAP4_CTRL_MODULE_CORE_STD_FUSE_PROD_ID_1 and sets 
+          OMAP4_SILICON_TYPE_PERFORMANCE to enable higher clockrates for standard
+          silicon class SOCs.
+
+	  This will enable:
+          * 1.2GHz MPU on omap443x
+          * 1.5GHz MPU and 500MHz IVA on omap446x
+
 endmenu
 
 endif

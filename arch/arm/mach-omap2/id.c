@@ -233,8 +233,13 @@ static void __init omap4_check_features(void)
 
 	omap4_features = 0;
 
+#if defined(CONFIG_OMAP4_OVERCLOCK)
+	printk(KERN_ERR "OMAP4: enabled performance type silicon clockrates\n");
+	si_type = OMAP4_SILICON_TYPE_PERFORMANCE;
+#else
 	si_type =
 	  (read_tap_reg(OMAP4_CTRL_MODULE_CORE_STD_FUSE_PROD_ID_1) >> 16) & 3;
+#endif
 
 	switch (si_type) {
 	case OMAP4_SILICON_TYPE_PERFORMANCE:
