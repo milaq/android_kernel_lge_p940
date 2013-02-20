@@ -104,6 +104,8 @@ static int g_nMajor = 0;
 #ifdef IMM_VIBE_TUNING
 #define TSPDRV_TUNING_ARG1	_IO(TSPDRV_MAGIC_NUMBER & 0xFF, 185)
 #endif
+
+static int pwmvalue;
  
 struct pwm_vib_data *pwm_priv = NULL;
 
@@ -299,6 +301,19 @@ static ssize_t write(struct file *file, const char *buf, size_t count, loff_t *p
 	return count;
 }
 
+static ssize_t pwmvalue_show(struct device *dev,struct device_attribute *attr,char *buf)
+{
+	return sprintf(buf, "%d\n", pwmvalue);
+}
+
+static ssize_t pwmvalue_store(struct device *dev,struct device_attribute *attr,const char *buf, size_t count)
+{
+	sscanf(buf, "%d\n", &pwmvalue);
+	return count;
+}
+
+static DEVICE_ATTR(pwmvalue, 0666, pwmvalue_show, pwmvalue_store);
+
 #if HAVE_UNLOCKED_IOCTL
 static long unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 #else
@@ -310,7 +325,7 @@ static int ioctl(struct inode *inode, struct file *file, unsigned int cmd, unsig
 	int i;
 #endif
 
-        VibeInt8 nForce[1] = {96};
+        VibeInt8 nForce[1] = {pwmvalue};
 
 	//printk("{tspdrv} : ioctl cmd = %x\n", cmd);
 
@@ -462,6 +477,11 @@ static int vibrator_probe(struct platform_device *pdev)
 		goto err_misc_register;
 	}
 
+	nRet = device_create_file(&pdev->dev, &dev_attr_pwmvalue);
+	if (nRet) {
+		printk( "pwmvalue sysfs register failed: Fail\n");
+	}
+
 	DbgRecorderInit(());
 	/* to set PWM freq, disable amp, etc...*/
 	ImmVibeSPI_ForceOut_Initialize();//Currently, Timer stats is disabled. 
@@ -582,6 +602,8 @@ static struct platform_driver platdrv =
 
 static int __init vibrator_init(void)
 {
+	pwmvalue = 96;
+
 	return	platform_driver_register(&platdrv);
 }
 
