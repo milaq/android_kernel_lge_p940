@@ -596,7 +596,7 @@ static ssize_t store_gpu_oc(struct cpufreq_policy *policy, const char *buf,
 
 struct freq_attr gpu_oc = {
 	.attr = { .name = "gpu_oc",
-		  .mode = 0644,
+		  .mode = 0666,
 		},
 	.show = show_gpu_oc,
 	.store = store_gpu_oc,
