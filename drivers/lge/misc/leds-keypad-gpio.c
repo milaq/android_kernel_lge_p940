@@ -31,15 +31,15 @@
 #include <linux/android_alarm.h>
 #include <linux/wakelock.h>
 
-#define TOUCH_DELAY_MSEC    200
-
 static int keypad_gpio;
 static int use_hold_key = 0;
 static int hold_key_gpio;
+static int pulseInterval = 4;
+static int pulseLength = 200;
 
 struct wake_lock wlock;
-struct workqueue_struct *blink_workqueue;
-struct delayed_work  blink_queue;
+struct workqueue_struct *pulse_workqueue;
+struct delayed_work  pulse_queue;
 struct alarm alarm;
 
 struct keypad_led_data {
@@ -47,7 +47,7 @@ struct keypad_led_data {
 };
 
 long touchdelay;
-int is_blinking = 0;
+int is_pulsing = 0;
 
 #if defined(CONFIG_MAX8971_CHARGER)&&  defined(CONFIG_MACH_LGE_P2_DCM)
 int pw_led_on_off=1;
@@ -78,7 +78,7 @@ EXPORT_SYMBOL(set_pw_led_on_off);
 static void keypad_led_store(struct led_classdev *led_cdev,
 				enum led_brightness value)
 {
-	is_blinking = 0;
+	is_pulsing = 0;
 
 	if(led_cdev->br_maintain_trigger == 1){
 		printk(KERN_ERR "[pwr_led]: br_maintain_on trigger is on!\n");
@@ -88,8 +88,8 @@ static void keypad_led_store(struct led_classdev *led_cdev,
 	if (value == 127) {
 		//printk(KERN_INFO "NOTIFICATION_LED: on\n");
 		wake_lock(&wlock);
-		is_blinking = 1;
-		queue_delayed_work(blink_workqueue, &blink_queue, msecs_to_jiffies(100));
+		is_pulsing = 1;
+		queue_delayed_work(pulse_workqueue, &pulse_queue, msecs_to_jiffies(100));
 
 	} else if(value == 255){
 		//printk(KERN_INFO "ALL_LED: SYSFS_LED On!\n");
@@ -112,27 +112,59 @@ static void keypad_led_store(struct led_classdev *led_cdev,
 	}
 }
 
-static void led_blinker_alarm(struct alarm *alarm)
+static ssize_t led_pulse_interval_store(struct device *dev,struct device_attribute *attr,const char *buf, size_t count)
 {
-	wake_lock(&wlock);
-	queue_delayed_work(blink_workqueue, &blink_queue, msecs_to_jiffies(100));
+    sscanf(buf, "%d\n", &pulseInterval);
+    if (pulseInterval < 1) pulseInterval = 1;
+    else if (pulseInterval > 60) pulseInterval = 60;
+
+    return count;
 }
 
-static void led_blink_queue(struct work_struct *work)
+static ssize_t led_pulse_interval_show(struct device *dev,struct device_attribute *attr,char *buf)
 {
-	if (is_blinking) {
-		//printk(KERN_INFO "NOTIFICATION_LED: blink\n");
+   return sprintf(buf, "%d\n", pulseInterval);
+}
+
+static ssize_t led_pulse_length_store(struct device *dev,struct device_attribute *attr,const char *buf, size_t count)
+{
+    sscanf(buf, "%d\n", &pulseLength);
+    if (pulseLength < 100) pulseLength = 100;
+    else if (pulseLength > 5000) pulseLength = 5000;
+
+    return count;
+}
+
+static ssize_t led_pulse_length_show(struct device *dev,struct device_attribute *attr,char *buf)
+{
+   return sprintf(buf, "%d\n", pulseLength);
+}
+
+static DEVICE_ATTR(led_pulse_interval, 0666, led_pulse_interval_show, led_pulse_interval_store);
+static DEVICE_ATTR(led_pulse_length, 0666, led_pulse_length_show, led_pulse_length_store);
+
+
+static void led_pulse_alarm(struct alarm *alarm)
+{
+	wake_lock(&wlock);
+	queue_delayed_work(pulse_workqueue, &pulse_queue, msecs_to_jiffies(100));
+}
+
+static void led_pulse_queue(struct work_struct *work)
+{
+	if (is_pulsing) {
+		//printk(KERN_INFO "NOTIFICATION_LED: pulse\n");
 		gpio_set_value(keypad_gpio, 1);
 		/* if device has a power led, light it up too */
 		if(use_hold_key)
 			gpio_set_value(hold_key_gpio, 1);
-		msleep(touchdelay);
+		msleep(pulseLength);
 		gpio_set_value(keypad_gpio, 0);
 		if(use_hold_key)
 			gpio_set_value(hold_key_gpio, 0);
 		
-		/* Insert a ~4 second pause between pulses */
-		ktime_t delay = ktime_add(alarm_get_elapsed_realtime(), ktime_set(3, 0));
+		/* Insert a pause (set via sysfs - default is 4 seconds) between pulses */
+		ktime_t delay = ktime_add(alarm_get_elapsed_realtime(), ktime_set(pulseInterval, 0));
 		alarm_start_range(&alarm, delay, delay);
 	} else {
 		//printk(KERN_INFO "NOTIFICATION_LED: off\n");
@@ -194,12 +226,19 @@ static int __devinit keypad_led_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	touchdelay = TOUCH_DELAY_MSEC;
+	ret = device_create_file(&pdev->dev, &dev_attr_led_pulse_interval);
+	if (ret)
+		printk("led_pulse_interval sysfs register failed: Fail\n");
+
+        ret = device_create_file(&pdev->dev, &dev_attr_led_pulse_length);
+        if (ret)
+                printk("led_pulse_length sysfs register failed: Fail\n");
+
 	wake_lock_init(&wlock, WAKE_LOCK_SUSPEND, "notificationlight");
-	blink_workqueue = create_singlethread_workqueue("notificationlight");
-	INIT_DELAYED_WORK(&blink_queue, led_blink_queue);
+	pulse_workqueue = create_singlethread_workqueue("notificationlight");
+	INIT_DELAYED_WORK(&pulse_queue, led_pulse_queue);
 	alarm_init(&alarm, ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP,
-					led_blinker_alarm);
+					led_pulse_alarm);
 
 	return ret;
 }
