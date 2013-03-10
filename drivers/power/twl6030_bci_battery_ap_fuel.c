@@ -2408,7 +2408,8 @@ static void twl6030_bci_battery_work(struct work_struct *work)
 	D("[bclee][TWL6030] di->valid_charging_source=%d, charging_ic_status=%d", di->valid_charging_source, charging_ic_status);
   /* log added to check fuel gauge stability - some dude @ LGE*/
   /* next time remove it prior shipping you brainiacs - milaq */
-  //DGAU("cap:%d - ui_cap:%d - volt:%d - chg_src:%d \n",di->capacity,di->ui_capacity,di->fg_voltage_mV,di->charger_source);
+  /* should not occur on !DEBUG - milaq */
+  DGAU("cap:%d - ui_cap:%d - volt:%d - chg_src:%d \n",di->capacity,di->ui_capacity,di->fg_voltage_mV,di->charger_source);
 	if (max17043_get_ui_capacity()==100 &&
 	   di->charger_source != POWER_SUPPLY_TYPE_BATTERY)
 		di->charge_status = POWER_SUPPLY_STATUS_FULL;
