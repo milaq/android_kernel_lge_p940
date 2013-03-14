@@ -46,8 +46,8 @@ struct keypad_led_data {
 	struct led_classdev keypad_led_class_dev;
 };
 
-long touchdelay;
 int is_pulsing = 0;
+int btn_bl = 0;
 
 #if defined(CONFIG_MAX8971_CHARGER)&&  defined(CONFIG_MACH_LGE_P2_DCM)
 int pw_led_on_off=1;
@@ -79,6 +79,7 @@ static void keypad_led_store(struct led_classdev *led_cdev,
 				enum led_brightness value)
 {
 	is_pulsing = 0;
+	btn_bl = 0;
 
 	if(led_cdev->br_maintain_trigger == 1){
 		printk(KERN_ERR "[pwr_led]: br_maintain_on trigger is on!\n");
@@ -93,6 +94,7 @@ static void keypad_led_store(struct led_classdev *led_cdev,
 
 	} else if(value == 255){
 		//printk(KERN_INFO "ALL_LED: SYSFS_LED On!\n");
+		btn_bl = 1;
 		gpio_set_value(keypad_gpio, 1);
 		if(use_hold_key)
 			gpio_set_value(hold_key_gpio, 1);
@@ -159,10 +161,11 @@ static void led_pulse_queue(struct work_struct *work)
 		if(use_hold_key)
 			gpio_set_value(hold_key_gpio, 1);
 		msleep(pulseLength);
-		gpio_set_value(keypad_gpio, 0);
-		if(use_hold_key)
-			gpio_set_value(hold_key_gpio, 0);
-		
+		if (!btn_bl) {
+			gpio_set_value(keypad_gpio, 0);
+			if(use_hold_key)
+				gpio_set_value(hold_key_gpio, 0);
+		}
 		/* Insert a pause (set via sysfs - default is 4 seconds) between pulses */
 		ktime_t delay = ktime_add(alarm_get_elapsed_realtime(), ktime_set(pulseInterval, 0));
 		alarm_start_range(&alarm, delay, delay);
