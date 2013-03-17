@@ -1226,7 +1226,10 @@ wl_cfgp2p_listen_complete(struct wl_priv *wl, struct net_device *ndev,
 	CFGP2P_DBG((" Enter\n"));
 	if (wl_get_p2p_status(wl, LISTEN_EXPIRED) == 0) {
 		wl_set_p2p_status(wl, LISTEN_EXPIRED);
-		if (timer_pending(&wl->p2p->listen_timer)) {
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-07-20, add wl->p2p null check		
+		//if (timer_pending(&wl->p2p->listen_timer)) {
+		if (wl->p2p && timer_pending(&wl->p2p->listen_timer)) {
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-07-20, add wl->p2p null check		    
 			spin_lock_bh(&wl->p2p->timer_lock);
 			del_timer_sync(&wl->p2p->listen_timer);
 			spin_unlock_bh(&wl->p2p->timer_lock);

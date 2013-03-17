@@ -69,10 +69,11 @@
 #ifdef WLMEDIA_HTSF
 extern void htsf_update(struct dhd_info *dhd, void *data);
 #endif
-int dhd_msg_level = DHD_ERROR_VAL;
+int dhd_msg_level = DHD_ERROR_VAL | DHD_EVENT_VAL;
+//int dhd_msg_level = 0x0007;
 
 #if defined(CONFIG_LGE_BCM432X_PATCH)
-bool g_ifup = FALSE;
+bool g_ifup = FALSE;	/* LGE_patch : wifi direct GO moed interface up */
 #endif
 
 #include <wl_iw.h>
@@ -952,7 +953,6 @@ wl_show_host_event(wl_event_msg_t *event, void *event_data)
 		       (int)auth_type));
 		break;
 	}
-
 	/* show any appended data */
 	if (datalen) {
 		buf = (uchar *) event_data;
@@ -1041,7 +1041,7 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 
 #ifdef WL_CFG80211
 #if defined(CONFIG_LGE_BCM432X_PATCH)
-			g_ifup = TRUE;
+			g_ifup = TRUE;	/* LGE_patch : wifi direct GO interface up */
 #endif
 
 			if (wl_cfg80211_is_progress_ifchange()) {
@@ -1785,12 +1785,14 @@ dhd_get_dtim_skip(dhd_pub_t *dhd)
 	int ret = -1;
 	int dtim_assoc = 0;
 
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-05-01, For VOIP 	
 #ifndef CONFIG_VOIP_KR	
 	if ((dhd->dtim_skip == 0) || (dhd->dtim_skip == 1))
 		bcn_li_dtim = 3;
 	else
 #endif
 	    bcn_li_dtim = dhd->dtim_skip;
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-05-01, For VOIP  
 
 	/* Check if associated */
 	if (dhd_is_associated(dhd, NULL) == FALSE) {

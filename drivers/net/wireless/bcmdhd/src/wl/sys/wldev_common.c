@@ -351,6 +351,10 @@ int wldev_set_country(
 		}
 	}
 	cspec.rev = -1;
+	//bill.jung@lge.com - Country Code and rev from framework
+	//memcpy(cspec.country_abbrev, country_code, WLC_CNTRY_BUF_SZ);
+	//memcpy(cspec.ccode, country_code, WLC_CNTRY_BUF_SZ);
+	//get_customized_country_code((char *)&cspec.country_abbrev, &cspec);
 	{
 		char *revstr;
 		char *endptr = NULL;
@@ -371,6 +375,7 @@ int wldev_set_country(
 			get_customized_country_code((char *)&cspec.country_abbrev, &cspec);
 		}
 	}
+	//bill.jung@lge.com - Country Code and rev from framework	
 	
 	error = wldev_iovar_setbuf(dev, "country", &cspec, sizeof(cspec),
 		smbuf, sizeof(smbuf), NULL);

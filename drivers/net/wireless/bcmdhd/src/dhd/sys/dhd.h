@@ -88,7 +88,9 @@ enum dhd_bus_state {
 #define POWERUP_MAX_RETRY	(10) /* how many times we retry to power up the chip */
 #endif
 #ifndef POWERUP_WAIT_MS
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-04-28, for kernel panic issue (2000 -> 4000)
 #define POWERUP_WAIT_MS		(4000) /* ms: time out in waiting wifi to come up */
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-04-28, for kernel panic issue (2000 -> 4000)
 #endif
 
 enum dhd_bus_wake_state {
@@ -260,7 +262,9 @@ typedef struct dhd_pub {
 				wait_event_interruptible_timeout(a, !dhd_mmc_suspend, HZ/100); \
 			} \
 		} 	while (0)
-	#define DHD_PM_RESUME_WAIT(a) 		_DHD_PM_RESUME_WAIT(a, 200)
+/* LGE_CHANGE_S, moon-wifi@lge.com by 2lee, 20120619, increase RESUME WAIT TIME(200->500) due to fail on getting a station info just after freezing & Restarting tasks.*/
+	#define DHD_PM_RESUME_WAIT(a) 		_DHD_PM_RESUME_WAIT(a, 500)
+/* LGE_CHANGE_E, moon-wifi@lge.com by 2lee, 20120619, increase RESUME WAIT TIME(200->500) due to fail on getting a station info just after freezing & Restarting tasks.*/
 	#define DHD_PM_RESUME_WAIT_FOREVER(a) 	_DHD_PM_RESUME_WAIT(a, ~0)
 	#define DHD_PM_RESUME_RETURN_ERROR(a)	do { if (dhd_mmc_suspend) return a; } while (0)
 	#define DHD_PM_RESUME_RETURN		do { if (dhd_mmc_suspend) return; } while (0)

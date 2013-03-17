@@ -77,9 +77,26 @@
 #define CMD_P2P_SET_PS		"P2P_SET_PS"
 #define CMD_SET_AP_WPS_P2P_IE 		"SET_AP_WPS_P2P_IE"
 
+/*LGE_CHANGE_S, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
 #ifdef CONFIG_COMMON_PATCH	// KEEP_ALIVE Patch-s
 #define CMD_KEEP_ALIVE		"KEEPALIVE"
+#define CMD_HIDDEN_SSID_AP	"HIDDEN_SSID_AP"  // TMUS_HOTSPOT
 #endif // KEEP_ALIVE Patch-e
+/*LGE_CHANGE_E, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
+
+//LGE_UPDATE_S moon-wifi@lge.com by wo0ngs 2012-06-15, yangseon.so add MAXASSOC command
+#if defined(CONFIG_LGE_BCM432X_PATCH) && defined(P2P_PATCH)
+#define CMD_MAXASSOC	"MAXASSOC"
+#endif
+//LGE_UPDATE_E moon-wifi@lge.com by wo0ngs 2012-06-15, yangseon.so add MAXASSOC command
+//LGE_CHANGE_S, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
+#ifdef BCMCCX				
+#define CMD_GETCCKM_RN		"get cckm_rn"
+#define CMD_SETCCKM_KRK		"set cckm_krk"
+#define CMD_GET_ASSOC_RES_IES	"get assoc_res_ies"
+#endif
+//LGE_CHANGE_E, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
+
 
 #ifdef PNO_SUPPORT
 #define CMD_PNOSSIDCLR_SET	"PNOSSIDCLR"
@@ -137,7 +154,10 @@ extern void dhd_wlfc_deinit(dhd_pub_t *dhd);
 #endif
 
 extern bool ap_fw_loaded;
+/* LGE_patch : interface name */
+//#ifdef CUSTOMER_HW2
 extern char iface_name[IFNAMSIZ];
+//#endif
 
 /**
  * Local (static) functions and variables
@@ -350,6 +370,92 @@ static int wl_android_get_p2p_dev_addr(struct net_device *ndev, char *command, i
 	return bytes_written;
 }
 
+//LGE_CHANGE_S, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
+#ifdef BCMCCX
+static int wl_android_get_cckm_rn(struct net_device *dev, char *command)
+{
+	int error, rn;
+
+	WL_TRACE(("%s:wl_android_get_cckm_rn\n", dev->name));
+	
+	error = wldev_iovar_getint(dev, "cckm_rn", &rn);
+	if (unlikely(error)) {
+		WL_ERR(("wl_android_get_cckm_rn error (%d)\n", error));
+		return -1;
+	}
+	WL_ERR(("wl_android_get_cckm_rn = %d\n", rn));
+	memcpy(command, &rn, sizeof(int));
+
+	return sizeof(int);
+}
+
+static int wl_android_set_cckm_krk(struct net_device *dev, char *command)
+{
+	int error;
+	unsigned char key[16];
+
+	static char iovar_buf[WLC_IOCTL_MEDLEN];
+
+	WL_TRACE(("%s: wl_iw_set_cckm_krk\n", dev->name));
+
+	memset(iovar_buf, 0, sizeof(iovar_buf));
+	memcpy(key, command+strlen("set cckm_krk")+1, 16);
+
+	error = wldev_iovar_setbuf(dev, "cckm_krk",key, sizeof(key), iovar_buf, WLC_IOCTL_MEDLEN,NULL);
+	if (unlikely(error))
+	{
+		WL_ERR((" cckm_krk set error (%d)\n", error));
+		return -1;
+	}
+	return 0;
+}
+
+static int wl_android_get_assoc_res_ies(struct net_device *dev, char *command)
+{
+	int error;
+	u8 buf[WL_ASSOC_INFO_MAX];
+	wl_assoc_info_t assoc_info;
+	u32 resp_ies_len = 0;
+	int bytes_written = 0;
+
+	WL_TRACE(("%s: wl_iw_get_assoc_res_ies\n", dev->name));
+
+	error = wldev_iovar_getbuf(dev, "assoc_info", NULL, 0, buf,WL_ASSOC_INFO_MAX, NULL);
+	if (unlikely(error)) {
+		WL_ERR(("could not get assoc info (%d)\n", error));
+		return -1;
+	}
+	
+	memcpy(&assoc_info, buf, sizeof(wl_assoc_info_t));
+	assoc_info.req_len = htod32(assoc_info.req_len);
+	assoc_info.resp_len = htod32(assoc_info.resp_len);
+	assoc_info.flags = htod32(assoc_info.flags);
+
+	if (assoc_info.resp_len) {
+		resp_ies_len = assoc_info.resp_len - sizeof(struct dot11_assoc_resp);
+	}
+
+	/* first 4 bytes are ie len */
+	memcpy(command, &resp_ies_len, sizeof(u32));
+	bytes_written= sizeof(u32);
+
+	/* get the association resp IE's if there are any */
+	if (resp_ies_len) {
+		error = wldev_iovar_getbuf(dev, "assoc_resp_ies", NULL, 0, buf,WL_ASSOC_INFO_MAX, NULL);
+		if (unlikely(error)) {
+			WL_ERR(("could not get assoc resp_ies (%d)\n", error));
+			return -1;
+		}
+
+		memcpy(command+sizeof(u32), buf, resp_ies_len);
+		bytes_written += resp_ies_len;
+	}
+	return bytes_written;
+}
+
+#endif /* BCMCCX */
+//LGE_CHANGE_E, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
+
 /**
  * Global function definitions (declared in wl_android.h)
  */
@@ -442,6 +548,7 @@ static int wl_android_set_fwpath(struct net_device *net, char *command, int tota
 	}
 	return 0;
 }
+/*LGE_CHANGE_S, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
 #ifdef CONFIG_COMMON_PATCH	// KEEP_ALIVE Patch-s
 /* BRCM_UPDATE_S for KEEP_ALIVE */
 static int wl_keep_alive_set(struct net_device *dev, char* extra, int total_len)
@@ -500,6 +607,47 @@ static int wl_keep_alive_set(struct net_device *dev, char* extra, int total_len)
 }
 /* BRCM_UPDATE_E for KEEP_ALIVE */
 #endif  // KEEP_ALIVE Patch-e
+/*LGE_CHANGE_E, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
+
+//LGE_CHANGE_S moon-wifi@lge.com by wo0ngs, 2012-06-15, yangseon.so,add MAXASSOC command
+#if defined(CONFIG_LGE_BCM432X_PATCH) && defined(P2P_PATCH)	// MAX_ASSOC Patch-s
+static int wl_max_assoc_set(struct net_device *dev, char* extra, int total_len){
+	int res = -1;
+	uint max_assoc = 0;
+    if ( extra == NULL )
+    {
+    	DHD_ERROR(( "%s: max_assoc is NULL\n", __FUNCTION__ ));
+		return -1;
+    }
+    if (sscanf(extra, "%d", &max_assoc) != 1)
+    {
+    	DHD_ERROR(( "%s: sscanf error. check max_assoc value\n", __FUNCTION__ ));
+    	return -EINVAL;
+   }
+  else
+  		DHD_ERROR(( "%s: max_assoc value=%d\n", __FUNCTION__, max_assoc ));
+  		res = wldev_iovar_setint(dev, "maxassoc", max_assoc);
+		return res;
+}
+#endif // MAX_ASSOC Patch-e
+//LGE_CHANGE_E moon-wifi@lge.com by wo0ngs, 2012-06-15, yangseon.so,add MAXASSOC command
+// TMUS_HOTSPOT
+static int wl_android_set_hidden_ssid(struct net_device *dev, char* command)
+{
+
+	int err=0;
+	int enable=0;
+
+	memcpy(&enable, command+strlen(CMD_HIDDEN_SSID_AP)+1, sizeof(int));
+	WL_ERR(("%s: wl_android_set_hidden_ssid enable=%d \n", dev->name,enable));
+
+	err = wldev_iovar_setint(dev, "closednet", enable);
+	if (unlikely(err)) {
+		WL_ERR(("Error (%d)\n", err));
+		return err;
+	}
+	return err;	
+}
 
 
 int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
@@ -584,12 +732,18 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		/* TBD: BTCOEXSCAN-STOP */
 	}
 	else if (strnicmp(command, CMD_BTCOEXMODE, strlen(CMD_BTCOEXMODE)) == 0) {
+/* LGE_CHANGE_S, moon-wifi@lge.com by 2lee, 20120612, Do not set a packet filter when got a command 'BTCOEXMODE'. Once the packet filter is set, it seldom be removed. */
+#ifndef CONFIG_MACH_LGE_CX2
 		uint mode = *(command + strlen(CMD_BTCOEXMODE) + 1) - '0';
 
 		if (mode == 1)
 			net_os_set_packet_filter(net, 0); /* DHCP starts */
 		else
 			net_os_set_packet_filter(net, 1); /* DHCP ends */
+#endif
+/* LGE_CHANGE_E, moon-wifi@lge.com by 2lee, 20120612, Do not set a packet filter when got a command 'BTCOEXMODE'. Once the packet filter is set, it seldom be removed. */
+
+
 #ifdef WL_CFG80211
 		bytes_written = wl_cfg80211_set_btcoex_dhcp(net, command);
 #endif
@@ -644,13 +798,38 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 			priv_cmd.total_len - skip, *(command + skip - 2) - '0');
 	}
 #endif /* WL_CFG80211 */
-
+//LGE_CHANGE_S, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
+#ifdef BCMCCX
+	else if (strnicmp(command, CMD_GETCCKM_RN, strlen(CMD_GETCCKM_RN)) == 0) {
+		bytes_written = wl_android_get_cckm_rn(net, command);
+	}
+	else if (strnicmp(command, CMD_SETCCKM_KRK, strlen(CMD_SETCCKM_KRK)) == 0) {
+		bytes_written = wl_android_set_cckm_krk(net, command);
+	}
+	else if (strnicmp(command, CMD_GET_ASSOC_RES_IES, strlen(CMD_GET_ASSOC_RES_IES)) == 0) {
+		bytes_written = wl_android_get_assoc_res_ies(net, command);
+	}
+#endif /* WL_CFG80211 */
+//LGE_CHANGE_E, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
+/*LGE_CHANGE_S, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
 #ifdef CONFIG_COMMON_PATCH	// KEEP_ALIVE Patch-s
 	else if (strnicmp(command, CMD_KEEP_ALIVE, strlen(CMD_KEEP_ALIVE)) == 0) {
 		int skip = strlen(CMD_KEEP_ALIVE) + 1;
 		bytes_written = wl_keep_alive_set(net, command + skip, priv_cmd.total_len - skip);
 	}
+	else if (strnicmp(command, CMD_HIDDEN_SSID_AP, strlen(CMD_HIDDEN_SSID_AP)) == 0) {   // TMUS_HOTSPOT
+		bytes_written = wl_android_set_hidden_ssid(net, command);
+	}
 #endif // KEEP_ALIVE Patch-e
+/*LGE_CHANGE_E, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
+//LGE_CHANGE_S moon-wifi@lge.com by wo0ngs, 2012-06-15, yangseon.so,add MAXASSOC command
+#if defined(CONFIG_LGE_BCM432X_PATCH) && defined(P2P_PATCH) // MAX_ASSOC Patch-s
+	else if (strnicmp(command, CMD_MAXASSOC, strlen(CMD_MAXASSOC)) == 0) {
+		int skip = strlen(CMD_MAXASSOC) + 1;
+		bytes_written = wl_max_assoc_set(net, command + skip, priv_cmd.total_len - skip);
+		}
+#endif // MAX_ASSOC Patch-e
+//LGE_CHANGE_E moon-wifi@lge.com by wo0ngs, 2012-06-15, yangseon.so,add MAXASSOC command
 	else {
 		DHD_ERROR(("Unknown PRIVATE command %s - ignored\n", command));
 		snprintf(command, 3, "OK");
@@ -692,10 +871,13 @@ int wl_android_init(void)
 #ifdef ENABLE_INSMOD_NO_FW_LOAD
 	dhd_download_fw_on_driverload = FALSE;
 #endif /* ENABLE_INSMOD_NO_FW_LOAD */
+/* LGE_patch : interface name */
+//#ifdef CUSTOMER_HW2
 	if (!iface_name[0]) {
 		memset(iface_name, 0, IFNAMSIZ);
 		bcm_strncpy_s(iface_name, IFNAMSIZ, "wlan", IFNAMSIZ);
 	}
+//#endif /* CUSTOMER_HW2 */
 	return ret;
 }
 
@@ -843,7 +1025,9 @@ static int wifi_probe(struct platform_device *pdev)
 		wifi_irqres = platform_get_resource_byname(pdev,
 			IORESOURCE_IRQ, "bcm4329_wlan_irq");
 	wifi_control_data = wifi_ctrl;
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-04-28, delay 200ms 
 	wifi_set_power(1, 200);	/* Power On */
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-04-28, delay 200ms
 	wifi_set_carddetect(1);	/* CardDetect (0->1) */
 
 	up(&wifi_control_sem);
@@ -858,7 +1042,9 @@ static int wifi_remove(struct platform_device *pdev)
 	DHD_ERROR(("## %s\n", __FUNCTION__));
 	wifi_control_data = wifi_ctrl;
 
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-04-28, delay 200ms
 	wifi_set_power(0, 200);	/* Power Off */
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-04-28, delay 200ms
 	wifi_set_carddetect(0);	/* CardDetect (1->0) */
 
 	up(&wifi_control_sem);

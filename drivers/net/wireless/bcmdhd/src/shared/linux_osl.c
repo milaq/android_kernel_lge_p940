@@ -64,7 +64,13 @@ static bcm_static_buf_t *bcm_static_buf = 0;
 
 typedef struct bcm_static_pkt {
 	struct sk_buff *skb_4k[STATIC_PKT_MAX_NUM];
+// LGE_CHANGE_S, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
+#if 0
+	struct sk_buff *skb_8k[STATIC_PKT_MAX_NUM];
+#else
 	struct sk_buff *skb_12k[STATIC_PKT_MAX_NUM];
+#endif
+// LGE_CHANGE_E, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 	struct semaphore osl_pkt_sem;
 	unsigned char pkt_use[STATIC_PKT_MAX_NUM * 2];
 } bcm_static_pkt_t;
@@ -631,10 +637,19 @@ osl_pktget_static(osl_t *osh, uint len)
 	int i = 0;
 	struct sk_buff *skb;
 
+// LGE_CHANGE_S, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
+#if 0
+	if (len > (PAGE_SIZE*2)) {
+		printk("%s: attempt to allocate huge packet (0x%x)\n", __FUNCTION__, len);
+		return osl_pktget(osh, len);
+	}
+#else
 	if (len > (PAGE_SIZE*3)) {
 		printk("%s: attempt to allocate huge packet (0x%x)\n", __FUNCTION__, len);
 		return osl_pktget(osh, len);
 	}
+#endif
+// LGE_CHANGE_E, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 
 	down(&bcm_static_skb->osl_pkt_sem);
 
@@ -663,7 +678,13 @@ osl_pktget_static(osl_t *osh, uint len)
 	if (i != STATIC_PKT_MAX_NUM) {
 		bcm_static_skb->pkt_use[i+STATIC_PKT_MAX_NUM] = 1;
 		up(&bcm_static_skb->osl_pkt_sem);
+// LGE_CHANGE_S, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
+#if 0
+		skb = bcm_static_skb->skb_8k[i];
+#else
 		skb = bcm_static_skb->skb_12k[i];
+#endif
+// LGE_CHANGE_E, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 		skb->tail = skb->data + len;
 		skb->len = len;
 		return skb;
@@ -689,7 +710,13 @@ osl_pktfree_static(osl_t *osh, void *p, bool send)
 	}
 
 	for (i = 0; i < STATIC_PKT_MAX_NUM; i++) {
+// LGE_CHANGE_S, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
+#if 0
+		if (p == bcm_static_skb->skb_8k[i]) {
+#else
 		if (p == bcm_static_skb->skb_12k[i]) {
+#endif
+// LGE_CHANGE_E, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 			down(&bcm_static_skb->osl_pkt_sem);
 			bcm_static_skb->pkt_use[i + STATIC_PKT_MAX_NUM] = 0;
 			up(&bcm_static_skb->osl_pkt_sem);

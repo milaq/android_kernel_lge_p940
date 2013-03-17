@@ -47,7 +47,8 @@ config BCMDHD_CONFIG_PATH
 config BCMDHD_GPIO_WL_RESET
 	depends on BCMDHD
 	int "GPIO to the Reset"
-	default 168
+	default 168 if(MACH_LGE_P2_LU5400!=y)
+        default 95 if(MACH_LGE_P2_LU5400=y)
 	---help---
 	  GPIO to the Reset
 
@@ -69,7 +70,8 @@ config BCMDHD_HOSTWAKEUP_USE_SDIO
 config BCMDHD_GPIO_WL_HOSTWAKEUP
 	depends on BCMDHD && BCMDHD_HOSTWAKEUP_USE_GPIO = y
 	int "GPIO to the Host Wakeup"
-	default 167
+	default 167 if(MACH_LGE_P2_LU5400!=y)
+        default 94 if(MACH_LGE_P2_LU5400=y)
 	---help---
 	  GPIO to the Host Wakeup
 
@@ -87,3 +89,9 @@ config BCMDHD_USE_STATIC_BUF
 	---help---
 	  Use static buffer in os_malloc
 
+config BRCM_CCX
+         depends on BCMDHD
+         bool "Enables CCX support"
+         default n
+         ---help---
+           Enables CCX support

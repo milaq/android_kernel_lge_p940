@@ -6,7 +6,7 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Werror -Dlinux -DBCMDRIVER \
 	-DDHD_BCMEVENTS -DSHOW_EVENTS -DDONGLEOVERLAYS -DBCMDBG               \
 	-DMMC_SDIO_ABORT -DBCMSDIO -DBCMLXSDMMC -DBCMPLATFORM_BUS -DWLP2P     \
 	-DNEW_COMPAT_WIRELESS -DWIFI_ACT_FRAME -DARP_OFFLOAD_SUPPORT          \
-	-DKEEP_ALIVE -DCSCAN -DPKT_FILTER_SUPPORT     \
+	-DKEEP_ALIVE -DCSCAN -DPKT_FILTER_SUPPORT -DWL_ENABLE_P2P_IF    \
 	-DEMBEDDED_PLATFORM -DENABLE_INSMOD_NO_FW_LOAD -DPNO_SUPPORT          \
 	-I$(SRCROOT) \
 	-I$(SRCROOT)/include \
@@ -20,22 +20,31 @@ DHDCFLAGS = -Wall -Wstrict-prototypes -Werror -Dlinux -DBCMDRIVER \
 # common patch  - should be defiend!!!!
 DHDCFLAGS += -DCONFIG_COMMON_PATCH
 
+# debug
+#DHDCFLAGS += -DDHD_DEBUG -DSDTEST
+
+# for P2P
+DHDCFLAGS += -DP2P_PATCH
 
 ifeq ($(CONFIG_WIFI_CONTROL_FUNC),y)
 DHDCFLAGS += -DCONFIG_WIFI_CONTROL_FUNC -DCUSTOMER_HW2
 endif
 
+#LGE_CHANGE_S, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
 # For CCX
 ifeq ($(CONFIG_BRCM_CCX),y)
 DHDCFLAGS += -DBCMCCX
 endif
+#LGE_CHANGE_E, real-wifi@lge.com by kyunghoe.kim, 20120626, for ccx
 
 
 ifeq ($(CONFIG_BCMDHD_HW_OOB),y)
 DHDCFLAGS += -DHW_OOB -DOOB_INTR_ONLY
+#LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-03-18
 ifneq ($(CONFIG_ARCH_OMAP),y)
 DHDCFLAGS += -DCUSTOM_OOB_GPIO_NUM=$(CONFIG_BCMDHD_GPIO_WL_HOSTWAKEUP)
 endif
+#LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-03-18
 else
 DHDCFLAGS += -DSDIO_ISR_THREAD
 endif
@@ -45,9 +54,12 @@ ifeq ($(CONFIG_BCMDHD_USE_STATIC_BUF),y)
 DHDCFLAGS += -DCONFIG_DHD_USE_STATIC_BUF
 endif
 
+#LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-05-01, CONFIG_VOIP_KR : Disable
+# For DTIM Disable/Enable
 ifeq ($(TARGET_COUNTRY), KR)
 DHDCFLAGS += -DCONFIG_VOIP_KR  
 endif
+#LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-05-01
 
 DHDOFILES = \
 		src/bcmsdio/sys/bcmsdh.o \

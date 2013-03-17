@@ -9,7 +9,10 @@
 #define DBG(args)
 #endif
 
+/* BEGIN: 0005337 mingi.sung@lge.com 2010-03-23 */
+/* MOD 0005337: [WLAN] Use static SKB when initializing */
 #define USE_STATIC_SKB	/* Use DHD_USE_STATIC_BUF at SKB */
+/* END: 0005337 mingi.sung@lge.com 2010-03-23 */
 
 #define MAX_WIFI_SECTION		4
 #define MAX_STATIC_PKT_NUM		8
@@ -29,11 +32,13 @@ struct mem_prealloc_data{
 #ifdef USE_STATIC_SKB
 struct mem_prealloc_skb{
 	struct sk_buff *skb_4k[MAX_STATIC_PKT_NUM];
+// LGE_CHANGE_S, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 #if 0
 	struct sk_buff *skb_8k[MAX_STATIC_PKT_NUM];
 #else
 	struct sk_buff *skb_12k[MAX_STATIC_PKT_NUM];
 #endif
+// LGE_CHANGE_E, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 };
 #endif
 struct mem_prealloc_data 	wifi_alloc_data[MAX_WIFI_SECTION];
@@ -117,6 +122,7 @@ static int __init brcm_static_buf_init(void)
 		}
 	}
 	for(i=0 ; i < MAX_STATIC_PKT_NUM; i++){
+// LGE_CHANGE_S, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 #if 0
 		if(!(wifi_alloc_skb.skb_8k[i] = dev_alloc_skb(PAGE_SIZE*2))){
 			printk("%s: skb_8k [%d] allocation fail!!!\n",__func__, i);
@@ -126,6 +132,7 @@ static int __init brcm_static_buf_init(void)
 			printk("%s: skb_12k [%d] allocation fail!!!\n",__func__, i);
 		}
 #endif
+// LGE_CHANGE_E, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 	}
 #endif
 	return 0;
@@ -144,11 +151,13 @@ static void __exit brcm_static_buf_exit(void)
 	for(i=0 ; i < MAX_STATIC_PKT_NUM; i++)
 		dev_kfree_skb(wifi_alloc_skb.skb_4k[i]);
 	for(i=0 ; i < MAX_STATIC_PKT_NUM; i++)
+// LGE_CHANGE_S, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 #if 0
 		dev_kfree_skb(wifi_alloc_skb.skb_8k[i]);
 #else
 		dev_kfree_skb(wifi_alloc_skb.skb_12k[i]);
 #endif
+// LGE_CHANGE_E, real-wifi@lge.com by wo0ngs 2011-08-29, for Memory Allocation Fail evation
 #endif	
 	return;
 }

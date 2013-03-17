@@ -72,7 +72,7 @@
 
 #if defined(CONFIG_LGE_BCM432X_PATCH)
 #include <bcmsdbus.h>
-extern bool g_ifup;
+extern bool g_ifup;	/* LGE_patch : wifi direct GO interface up */
 #endif
 
 #ifdef WLMEDIA_HTSF
@@ -119,6 +119,16 @@ extern bool ap_fw_loaded;
 #endif
 
 #include <wl_android.h>
+
+#ifdef CONFIG_LGE_BCM432X_PATCH
+// LGE_CHANGE_S, freddy.jang, 20111213, for ATCMD & Hidden Menu
+//#define WIFI_DRIVER_FW_PATH_PARAM	"/data/misc/wifi/firmware_path"
+// LGE_CHANGE_E, freddy.jang, 20111213, for ATCMD & Hidden Menu
+/* LGE_CHANGE_S [bill.park@lge.com] 2010-12-10, mac write */
+//#define NV_WIFI_MACADDR "/data/misc/wifi/config_mac"
+//#define NV_WIFI_MACFLAG "/proc/nvdata/WIFI_FLAG"
+/* LGE_CHANGE_E [bill.park@lge.com] 2010-12-10, mac write */
+#endif
 
 #ifdef ARP_OFFLOAD_SUPPORT
 void aoe_update_host_ipv4_table(dhd_pub_t *dhd_pub, u32 ipa, bool add);
@@ -309,7 +319,9 @@ typedef struct dhd_info {
 char firmware_path[MOD_PARAM_PATHLEN];
 char nvram_path[MOD_PARAM_PATHLEN];
 
+//bill.jung@lge.com - Protect HNAG event when wifi is not turned at first time after booting
 static bool NotYetTurnedOnFirst = TRUE;
+//bill.jung@lge.com - Protect HNAG event when wifi is not turned at first time after booting
 
 int op_mode = 0;
 module_param(op_mode, int, 0644);
@@ -317,7 +329,11 @@ extern int wl_control_wl_start(struct net_device *dev);
 extern int net_os_send_hang_message(struct net_device *dev);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 struct semaphore dhd_registration_sem;
+/* LGE_UPDATE_S, moon-wifi@lge.com by 2lee, 20120601, Prevent kernel panic while a wifi driver module is loading.*/
+#ifndef CONFIG_COMMON_PATCH
 struct semaphore dhd_chipup_sem;
+#endif
+/* LGE_UPDATE_E, moon-wifi@lge.com by 2lee, 20120601 */
 
 #define DHD_REGISTRATION_TIMEOUT  12000  /* msec : allowed time to finished dhd registration */
 #endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) */
@@ -331,6 +347,10 @@ module_param(dhd_msg_level, int, 0);
 
 
 #ifdef CONFIG_LGE_BCM432X_PATCH
+/* load firmware and/or nvram values from the filesystem */
+// LGE_CHANGE_S, freddy.jang, 20111213, for ATCMD & Hidden Menu
+//module_param_string(firmware_path, firmware_path, MOD_PARAM_PATHLEN, 0660);
+// LGE_CHANGE_E, freddy.jang, 20111213, for ATCMD & Hidden Menu
 #else
 module_param_string(firmware_path, firmware_path, MOD_PARAM_PATHLEN, 0660);
 #endif
@@ -522,6 +542,8 @@ static int dhd_toe_set(dhd_info_t *dhd, int idx, uint32 toe_ol);
 static int dhd_wl_host_event(dhd_info_t *dhd, int *ifidx, void *pktdata,
                              wl_event_msg_t *event_ptr, void **data_ptr);
 
+
+/* LGE_CHANGE_START, moon-wifi@lge.com by 2lee, 20120223, adding mfgtest.bin path for at command. */
 #define WIFI_DRIVER_FW_PATH_PARAM	"/data/misc/wifi/fw_path"
 
 int read_fw_path(void)
@@ -565,11 +587,16 @@ exit:
 	return ret;
 }
 
+/* LGE_CHANGE_END, moon-wifi@lge.com by 2lee, 20120223 */
+
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) && defined(CONFIG_PM_SLEEP)
 static int dhd_sleep_pm_callback(struct notifier_block *nfb, unsigned long action, void *ignored)
 {
 	int ret = NOTIFY_DONE;
 
+//bill.jung@lge.com - Broadcom Patch to fix CMD52 timeout when phone suspend and resume
+#if 1 //(LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 39))
 	switch (action) {
 	case PM_HIBERNATION_PREPARE:
 	case PM_SUSPEND_PREPARE:
@@ -583,6 +610,7 @@ static int dhd_sleep_pm_callback(struct notifier_block *nfb, unsigned long actio
 		break;
 	}
 	smp_mb();
+#endif
 	return ret;
 }
 
@@ -616,6 +644,12 @@ static void dhd_set_packet_filter(int value, dhd_pub_t *dhd)
 static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
 
+//bill.jung@lge.com - Don't set up filter and Power save mode
+#if 0
+	int power_mode = PM_MAX;
+#endif
+//bill.jung@lge.com - Don't set up filter and Power save mode
+
 	/* wl_pkt_filter_enable_t	enable_parm; */
 	char iovbuf[32];
 	int bcn_li_dtim = 3;
@@ -630,6 +664,18 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				/* Kernel suspended */
 				DHD_ERROR(("%s: force extra Suspend setting \n", __FUNCTION__));
 				
+//bill.jung@lge.com - Don't set up filter and Power save mode
+#if 0
+				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
+				                 sizeof(power_mode), TRUE, 0);
+
+				/* Enable packet filter, only allow unicast packet to send up */
+				dhd_set_packet_filter(1, dhd);
+#endif
+//bill.jung@lge.com - Don't set up filter and Power save mode
+				/* Enable packet filter, only allow unicast packet to send up */
+				dhd_set_packet_filter(1, dhd);
+
 				/* If DTIM skip is set up as default, force it to wake
 				 * each third DTIM for better power savings.  Note that
 				 * one side effect is a chance to miss BC/MC packet.
@@ -648,6 +694,19 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				/* Kernel resumed  */
 				DHD_TRACE(("%s: Remove extra suspend setting \n", __FUNCTION__));
 				
+//bill.jung@lge.com - Don't set up filter and Power save mode
+#if 0
+				power_mode = PM_FAST;
+				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
+				                 sizeof(power_mode), TRUE, 0);
+
+				/* disable pkt filter */
+				dhd_set_packet_filter(0, dhd);
+#endif
+//bill.jung@lge.com - Don't set up filter and Power save mode
+				/* disable pkt filter */
+				dhd_set_packet_filter(0, dhd);
+
 				/* restore pre-suspend setting for dtim_skip */
 				bcm_mkiovar("bcn_li_dtim", (char *)&dhd->dtim_skip,
 					4, iovbuf, sizeof(iovbuf));
@@ -2115,8 +2174,10 @@ dhd_ethtool(dhd_info_t *dhd, void *uaddr)
 
 static bool dhd_check_hang(struct net_device *net, dhd_pub_t *dhdp, int error)
 {
+	//bill.jung@lge.com - Protect HNAG event when wifi is not turned at first time after booting
 	if( NotYetTurnedOnFirst == TRUE )
 		return FALSE;
+	//bill.jung@lge.com - Protect HNAG event when wifi is not turned at first time after booting
 
 	if (!dhdp)
 		return FALSE;
@@ -2440,6 +2501,81 @@ exit:
 	DHD_OS_WAKE_UNLOCK(&dhd->pub);
 	return 0;
 }
+#if 0
+#ifdef CONFIG_LGE_BCM432X_PATCH
+// LGE_CHANGE_S, freddy.jang, 20111213, for ATCMD & Hidden Menu
+int load_firmware_path(void)
+{	
+	int ret = 0;
+    struct file *fp = NULL;
+	mm_segment_t old_fs;
+
+	/* change to KERNEL_DS address limit */
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+    fp = filp_open(WIFI_DRIVER_FW_PATH_PARAM, O_RDONLY, 0666);
+    if (IS_ERR(fp)) {
+		DHD_ERROR(("%s: Failed to open wlan fw path param\n", __FUNCTION__));
+		firmware_path[0] = '\0';
+		fp = NULL;
+        ret = -1;
+		goto exit;
+    }
+
+    if (fp->f_op->read(fp, firmware_path, sizeof(firmware_path), &fp->f_pos) < 0) {
+		DHD_ERROR(("%s: Failed to read wlan fw path param\n", __FUNCTION__));
+		firmware_path[0] = '\0';
+        ret = -1;
+		goto exit;
+    }
+
+exit:
+	if (fp)
+		filp_close(fp, current->files);
+	/* restore previous address limit */
+	set_fs(old_fs);
+
+    return ret;
+}
+
+int save_firmware_path(void)
+{
+	int ret = 0;
+    struct file *fp = NULL;
+	loff_t pos = 0;
+	mm_segment_t old_fs;
+	int len;
+
+	/* change to KERNEL_DS address limit */
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	fp = filp_open(WIFI_DRIVER_FW_PATH_PARAM, O_WRONLY|O_TRUNC, 0666);
+	if (IS_ERR(fp)) {
+		DHD_ERROR(("%s: Failed to open wlan fw path param\n", __FUNCTION__));
+		fp = NULL;
+        ret = -1;
+		goto exit;
+    }
+	len = strlen(firmware_path) + 1;
+    if (fp->f_op->write(fp, firmware_path, len, &pos) != len) {
+		DHD_ERROR(("%s: Failed to write wlan fw path param\n", __FUNCTION__));
+        ret = -1;
+		goto exit;
+    }
+
+exit:
+	if (fp)
+		filp_close(fp, current->files);
+	/* restore previous address limit */
+	set_fs(old_fs);
+
+    return ret;
+}
+// LGE_CHANGE_E, freddy.jang, 20111213, for ATCMD & Hidden Menu
+#endif
+#endif
 
 static int
 dhd_open(struct net_device *net)
@@ -2454,7 +2590,16 @@ dhd_open(struct net_device *net)
 	DHD_OS_WAKE_LOCK(&dhd->pub);
 
 #ifdef CONFIG_LGE_BCM432X_PATCH
+#if 0
+	/* Update FW path if it was changed */
+	// LGE_CHANGE_S, freddy.jang, 20111213, for ATCMD & Hidden Menu
+	load_firmware_path();
+	// LGE_CHANGE_E, freddy.jang, 20111213, for ATCMD & Hidden Menu
+#else
+	/* LGE_CHANGE_START, moon-wifi@lge.com by 2lee, 20120223, adding mfgtest.bin path for at command. */
 	read_fw_path();
+	/* LGE_CHANGE_END, moon-wifi@lge.com by 2lee, 20120223. */
+#endif
 #endif
 	/* Update FW path if it was changed */
 	if ((firmware_path != NULL) && (firmware_path[0] != '\0')) {
@@ -2464,6 +2609,14 @@ dhd_open(struct net_device *net)
 		firmware_path[0] = '\0';
 	}
 	
+#ifdef CONFIG_LGE_BCM432X_PATCH	
+#if 0
+	// LGE_CHANGE_S, freddy.jang, 20111213, for ATCMD & Hidden Menu
+	save_firmware_path();
+	// LGE_CHANGE_E, freddy.jang, 20111213, for ATCMD & Hidden Menu
+#endif
+#endif
+
 #if !defined(WL_CFG80211)
 	/*
 	 * Force start if ifconfig_up gets called before START command
@@ -2591,8 +2744,12 @@ dhd_osl_detach(osl_t *osh)
 	osl_detach(osh);
 #if 1 && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
 	up(&dhd_registration_sem);
+/* LGE_UPDATE_S, moon-wifi@lge.com by 2lee, 20120601, Prevent kernel panic while a wifi driver module is loading.*/
+#ifndef CONFIG_COMMON_PATCH
 #if	defined(BCMLXSDMMC)
 	up(&dhd_chipup_sem);
+#endif
+/* LGE_UPDATE_E, moon-wifi@lge.com by 2lee, 20120601 */
 #endif
 #endif 
 }
@@ -2703,7 +2860,16 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
 #ifdef CONFIG_LGE_BCM432X_PATCH
+#if 0
+	/* updates firmware nvram path if it was provided as module parameters */
+	// LGE_CHANGE_S, freddy.jang, 20111213, for ATCMD & Hidden Menu
+	load_firmware_path();
+	// LGE_CHANGE_E, freddy.jang, 20111213, for ATCMD & Hidden Menu
+#else
+	/* LGE_CHANGE_START, moon-wifi@lge.com by 2lee, 20120223, adding mfgtest.bin path for at command. */
 	read_fw_path();
+	/* LGE_CHANGE_END, moon-wifi@lge.com by 2lee, 20120223. */
+#endif
 #endif
 	/* updates firmware nvram path if it was provided as module parameters */
 	if ((firmware_path != NULL) && (firmware_path[0] != '\0'))
@@ -2711,6 +2877,13 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	if ((nvram_path != NULL) && (nvram_path[0] != '\0'))
 		strcpy(nv_path, nvram_path);
 
+#ifdef CONFIG_LGE_BCM432X_PATCH		
+#if 0
+	// LGE_CHANGE_S, freddy.jang, 20111213, for ATCMD & Hidden Menu
+	save_firmware_path();
+	// LGE_CHANGE_E, freddy.jang, 20111213, for ATCMD & Hidden Menu
+#endif
+#endif
 	/* Allocate etherdev, including space for private structure */
 	if (!(net = alloc_etherdev(sizeof(dhd)))) {
 		DHD_ERROR(("%s: OOM - alloc_etherdev\n", __FUNCTION__));
@@ -3028,13 +3201,13 @@ dhd_bus_start(dhd_pub_t *dhdp)
 
 	return 0;
 }
-
+/* LGE_patch : S : config file setting */
 #if defined(CONFIG_LGE_BCM432X_PATCH)
 #include <linux/fs.h>
 #include <linux/ctype.h>
 
 #define strtoul(nptr, endptr, base) bcm_strtoul((nptr), (endptr), (base))
-
+//char config_path[MOD_PARAM_PATHLEN] = "";
 bool PM_control = TRUE;
 
 static int dhd_preinit_proc(dhd_pub_t *dhd, int ifidx, char *name, char *value)
@@ -3090,6 +3263,22 @@ static int dhd_preinit_proc(dhd_pub_t *dhd, int ifidx, char *name, char *value)
 
 		return dhd_wl_ioctl_cmd(dhd, WLC_SET_PM,
 				&var_int, sizeof(var_int), TRUE, 0);
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-06-12, BTAMP HT Channel Set		
+#ifdef WLBTAMP
+	}else if(!strcmp(name, "btamp_chan")) {
+		int btamp_chan;
+		int iov_len=0;
+		char iovbuf[128];
+		int ret;
+		
+		btamp_chan = (int)simple_strtol(value, NULL, 0);
+		iov_len = bcm_mkiovar("btamp_chan", (char *)&btamp_chan, 4, iovbuf, sizeof(iovbuf));
+		if ((ret  = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, iov_len, TRUE, 0) < 0))
+		DHD_ERROR(("%s btamp_chan=%d set failed code %d\n", __FUNCTION__,btamp_chan, ret));
+		else
+		DHD_ERROR(("%s btamp_chan %d set success\n", __FUNCTION__,btamp_chan));
+#endif
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-06-12, BTAMP HT Channel Set
 	} else if(!strcmp(name,"cur_etheraddr")) {
 		struct ether_addr ea;
 		char buf[32];
@@ -3117,6 +3306,25 @@ static int dhd_preinit_proc(dhd_pub_t *dhd, int ifidx, char *name, char *value)
 		}
 		else{
 			memcpy(dhd->mac.octet, (void *)&ea, ETHER_ADDR_LEN);
+#if defined(CONFIG_COMMON_PATCH) && !defined(AP) && defined(WLP2P)
+			/* Check if firmware with WFD support used */
+			if ((strstr(fw_path, "_p2p") != NULL) || (op_mode & WFD_MASK))
+			{
+				struct ether_addr p2p_ea;
+
+				memcpy(&p2p_ea, &dhd->mac, ETHER_ADDR_LEN);
+				ETHER_SET_LOCALADDR(&p2p_ea);
+				iovlen = bcm_mkiovar("p2p_da_override", (char *)&p2p_ea, ETHER_ADDR_LEN, buf, sizeof(buf));
+				if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf, iovlen, TRUE, 0)) < 0)
+				{
+					DHD_ERROR(("%s p2p_da_override ret= %d\n", __FUNCTION__, ret));
+				}
+				else
+				{
+					DHD_INFO(("%s: p2p_da_override succeeded\n", __FUNCTION__));
+				}
+			}
+#endif
 			return ret;
 		}
 	} else {
@@ -3160,7 +3368,9 @@ static int dhd_preinit_config(dhd_pub_t *dhd, int ifidx)
 	int ret = 0;
 	char *config_path;
 	
+	//bill.jung@lge.com - Protect HNAG event when wifi is not turned at first time after booting
 	NotYetTurnedOnFirst = FALSE;
+	//bill.jung@lge.com - Protect HNAG event when wifi is not turned at first time after booting
 
 	config_path = CONFIG_BCMDHD_CONFIG_PATH;
 
@@ -3223,6 +3433,7 @@ err:
 	goto out;
 }
 #endif /* CONFIG_LGE_BCM432X_PATCH */
+/* LGE_patch : E : config file setting */
 
 #if !defined(AP) && defined(WLP2P)
 /* For Android ICS MR2 release, the concurrent mode is enabled by default and the firmware
@@ -3261,16 +3472,28 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	char eventmask[WL_EVENTING_MASK_LEN];
 	char iovbuf[WL_EVENTING_MASK_LEN + 12];	/*  Room for "event_msgs" + '\0' + bitvec  */
 
+	//bill.jung@lge.com - For config file setup
+	//uint power_mode = PM_FAST;
+	//bill.jung@lge.com - For config file setup
 	uint32 dongle_align = DHD_SDALIGN;
 	uint32 glom = 0;
+#ifdef BCMCCX
+	uint bcn_timeout = 8;  // for CCX
+#else
 	uint bcn_timeout = 4;
+#endif
 	uint retry_max = 3;
 #if defined(ARP_OFFLOAD_SUPPORT)
 	int arpoe = 1;
 #endif
-	int scan_assoc_time = DHD_SCAN_ACTIVE_TIME;
 	int scan_unassoc_time = 40;
+#ifdef BCMCCX
+	int scan_assoc_time = 5;  // for CCX
+	int scan_passive_time = 50;  // for CCX
+#else
+	int scan_assoc_time = DHD_SCAN_ACTIVE_TIME;
 	int scan_passive_time = DHD_SCAN_PASSIVE_TIME;
+#endif
 	char buf[WLC_IOCTL_SMLEN];
 	char *ptr;
 	uint32 listen_interval = LISTEN_INTERVAL; /* Default Listen Interval in Beacons */
@@ -3405,10 +3628,26 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 			dhd->mac.octet[0], dhd->mac.octet[1], dhd->mac.octet[2],
 			dhd->mac.octet[3], dhd->mac.octet[4], dhd->mac.octet[5]));
 
+	/* Set Country code  */
+	//bill.jung@lge.com - For config file setup
+	/*
+	if (dhd->dhd_cspec.ccode[0] != 0) {
+		bcm_mkiovar("country", (char *)&dhd->dhd_cspec,
+			sizeof(wl_country_t), iovbuf, sizeof(iovbuf));
+		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
+			DHD_ERROR(("%s: country code setting failed\n", __FUNCTION__));
+	}
+	*/
+
 	/* Set Listen Interval */
 	bcm_mkiovar("assoc_listen", (char *)&listen_interval, 4, iovbuf, sizeof(iovbuf));
 	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
 		DHD_ERROR(("%s assoc_listen failed %d\n", __FUNCTION__, ret));
+
+	/* Set PowerSave mode */
+	//bill.jung@lge.com - For config file setup
+	//dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode, sizeof(power_mode), TRUE, 0);
+	//bill.jung@lge.com - For config file setup
 
 	/* Match Host and Dongle rx alignment */
 	bcm_mkiovar("bus:txglomalign", (char *)&dongle_align, 4, iovbuf, sizeof(iovbuf));
@@ -3441,6 +3680,24 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 		dhd_wl_ioctl_cmd(dhd, WLC_SET_DTIMPRD, (char *)&dtim, sizeof(dtim), TRUE, 0);
 	}
 #endif 
+
+/*LGE_CHANGE_S, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
+#if 0
+#if defined(KEEP_ALIVE)
+	{
+	/* Set Keep Alive : be sure to use FW with -keepalive */
+	int res;
+
+#if defined(SOFTAP)
+	if (ap_fw_loaded == FALSE)
+#endif 
+		if ((res = dhd_keep_alive_onoff(dhd)) < 0)
+			DHD_ERROR(("%s set keeplive failed %d\n",
+			__FUNCTION__, res));
+	}
+#endif /* defined(KEEP_ALIVE) */
+#endif
+/*LGE_CHANGE_E, [WiFi][jaeoh.oh@lge.com], 2012-05-03, Set keep alive packet */
 
 	/* Read event_msgs mask */
 	bcm_mkiovar("event_msgs", eventmask, WL_EVENTING_MASK_LEN, iovbuf, sizeof(iovbuf));
@@ -3479,6 +3736,11 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	setbit(eventmask, WLC_E_PFN_NET_FOUND);
 #endif /* PNO_SUPPORT */
 	/* enable dongle roaming event */
+#ifdef BCMCCX	
+	setbit(eventmask, WLC_E_ROAM_START);   // for CCX
+	setbit(eventmask, WLC_E_ROAM_PREP);    // for CCX
+	setbit(eventmask, WLC_E_TRACE);        // for CCX
+#endif
 	setbit(eventmask, WLC_E_ROAM);
 #ifdef WL_CFG80211
 	setbit(eventmask, WLC_E_ESCAN_RESULT);
@@ -3522,12 +3784,19 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 
 #ifdef PKT_FILTER_SUPPORT
 	/* Setup defintions for pktfilter , enable in suspend */
+#ifdef CONFIG_COMMON_PATCH
+	dhd->pktfilter_count = 5;
+#else
 	dhd->pktfilter_count = 4;
+#endif
 	/* Setup filter to allow only unicast */
 	dhd->pktfilter[0] = "100 0 0 0 0x01 0x00";
 	dhd->pktfilter[1] = NULL;
 	dhd->pktfilter[2] = NULL;
 	dhd->pktfilter[3] = NULL;
+#ifdef CONFIG_COMMON_PATCH
+	dhd->pktfilter[4] = "104 0 0 0 0xFFFFFF 0x01005E";
+#endif
 #if defined(SOFTAP)
 	if (ap_fw_loaded) {
 		int i;
@@ -4056,7 +4325,10 @@ dhd_module_init(void)
 {
 	int error = 0;
 
-#if 1 && defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+/* LGE_UPDATE_S, moon-wifi@lge.com by 2lee, 20120601, Prevent kernel panic while a wifi driver module is loading.*/
+//#if 1 && defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+#if !defined(CONFIG_COMMON_PATCH) && 1 && defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+/* LGE_UPDATE_E, moon-wifi@lge.com by 2lee, 20120601 */
 	int retry = POWERUP_MAX_RETRY;
 	int chip_up = 0;
 #endif 
@@ -4081,7 +4353,10 @@ dhd_module_init(void)
 	} while (0);
 #endif 
 
-#if 1 && defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+/* LGE_UPDATE_S, moon-wifi@lge.com by 2lee, 20120601, Prevent kernel panic while a wifi driver module is loading.*/
+//#if 1 && defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+#if !defined(CONFIG_COMMON_PATCH) && 1 && defined(BCMLXSDMMC) && (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+/* LGE_UPDATE_E, moon-wifi@lge.com by 2lee, 20120601 */
 	do {
 		sema_init(&dhd_chipup_sem, 0);
 		dhd_bus_reg_sdio_notify(&dhd_chipup_sem);

@@ -440,6 +440,10 @@ int dhd_monitor_uninit(void);
 int dhd_start_xmit(struct sk_buff *skb, struct net_device *net);
 
 
+#ifdef BCMCCX
+/* to avoid disassoc after roaming by deauth frame from previous AP*/
+static char g_current_bssid[6] = {0, };
+#endif /* BCMCCX */
 #define CHECK_SYS_UP(wlpriv)						\
 do {									\
 	struct net_device *ndev = wl_to_prmry_ndev(wlpriv);       	\
@@ -596,6 +600,13 @@ static const u32 __wl_cipher_suites[] = {
 /* IOCtl version read from targeted driver */
 static int ioctl_version;
 
+/* LGE_CHANGE_S, moon-wifi@lge.com by 2lee, 20120619, When getting a station info just after freezing & Restarting tasks is failed, 
+tolerate it 10 times instead of force-disconneting. *///2LEE var.
+#define FAIL_LIMIT	2
+static int rssi_cnt = FAIL_LIMIT;
+/* LGE_CHANGE_E, moon-wifi@lge.com by 2lee, 20120619, When getting a station info just after freezing & Restarting tasks is failed, 
+tolerate it 10 times instead of force-disconneting. */
+ 
 #ifdef D11AC_IOTYPES
 /* Return a new chanspec given a legacy chanspec
  * Returns INVCHANSPEC on error
@@ -1369,9 +1380,11 @@ wl_cfg80211_notify_ifdel(struct net_device *ndev)
 		WL_ERR(("IF_DEL event called from dongle, net %x, vif name: %s\n",
 			(unsigned int)ndev, wl->p2p->vir_ifname));
 
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-05-15, prevent kernel panic
 		if(wl->p2p->vir_ifname != NULL){
 			memset(wl->p2p->vir_ifname, '\0', IFNAMSIZ);
 		}
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-05-15, prevent kernel panic		
 		index = wl_cfgp2p_find_idx(wl, ndev);
 		wl_to_p2p_bss_ndev(wl, index) = NULL;
 		wl_to_p2p_bss_bssidx(wl, index) = 0;
@@ -2330,7 +2343,13 @@ wl_set_set_cipher(struct net_device *dev, struct cfg80211_connect_params *sme)
 	WL_DBG(("pval (%d) gval (%d)\n", pval, gval));
 
 	if (is_wps_conn(sme)) {
-		err = wldev_iovar_setint_bsscfg(dev, "wsec", 4, bssidx);
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-06-23, WPS Support Both Open/WPA1,2
+		if (sme->privacy)
+			err = wldev_iovar_setint_bsscfg(dev, "wsec", 4, bssidx);
+		else
+			/* WPS-2.0 allowes no security */
+			err = wldev_iovar_setint_bsscfg(dev, "wsec", 0, bssidx);
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-06-23, WPS Support Open/WPA1,2 
 	} else {
 #ifdef BCMWAPI_WPI
 		if (sme->crypto.cipher_group == WLAN_CIPHER_SUITE_SMS4) {
@@ -2415,12 +2434,13 @@ wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme)
 #endif
 					WPA2_AUTH_UNSPECIFIED)) {
 			switch (sme->crypto.akm_suites[0]) {
-			case WLAN_AKM_SUITE_WAPI_CERT:
-				val = WAPI_AUTH_UNSPECIFIED;
+			case WLAN_AKM_SUITE_8021X:
+				val = WPA2_AUTH_UNSPECIFIED;
 				break;
-			case WLAN_AKM_SUITE_WAPI_PSK:
-				val = WAPI_AUTH_PSK;
+			case WLAN_AKM_SUITE_PSK:
+				val = WPA2_AUTH_PSK;
 				break;
+
 #ifdef BCMCCX
 			case WLAN_AKM_SUITE_CCKM:
 				val = WPA2_AUTH_CCKM;
@@ -2432,7 +2452,23 @@ wl_set_key_mgmt(struct net_device *dev, struct cfg80211_connect_params *sme)
 				return -EINVAL;
 			}
 		}
-#endif
+#if defined (BCMWAPI_WPI) 
+		else if (val & (WPA2_AUTH_PSK | WPA2_AUTH_UNSPECIFIED)) {
+			switch (sme->crypto.akm_suites[0]) {
+			case WLAN_AKM_SUITE_WAPI_CERT:
+				val = WAPI_AUTH_UNSPECIFIED;
+				break;
+			case WLAN_AKM_SUITE_WAPI_PSK:
+				val = WAPI_AUTH_PSK;
+				break;
+			default:
+				WL_ERR(("invalid cipher group (%d)\n",
+					sme->crypto.cipher_group));
+				return -EINVAL;
+			}
+		}
+#endif //BCMWAPI_WPI
+#endif   //2012-0801, add (BCMWAPI_WPI) || defined (BCMCCX)
 		WL_DBG(("setting wpa_auth to %d\n", val));
 
 		err = wldev_iovar_setint_bsscfg(dev, "wpa_auth", val, bssidx);
@@ -3275,6 +3311,8 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 
 		/* Report the current tx rate */
 		err = wldev_ioctl(dev, WLC_GET_RATE, &rate, sizeof(rate), false);
+		WL_TRACE(("2LEE rate is %d \n", rate));
+		
 		if (err) {
 			WL_ERR(("Could not get rate (%d)\n", err));
 		} else {
@@ -3288,6 +3326,8 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 		scb_val.val = 0;
 		err = wldev_ioctl(dev, WLC_GET_RSSI, &scb_val,
 			sizeof(scb_val_t), false);
+		WL_TRACE(("2LEE rssi is  %d \n", scb_val.val));
+
 		if (err) {
 			WL_ERR(("Could not get rssi (%d)\n", err));
 			goto get_station_err;
@@ -3298,6 +3338,21 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 		WL_DBG(("RSSI %d dBm\n", rssi));
 
 get_station_err:
+		
+/* LGE_CHANGE_S, moon-wifi@lge.com by 2lee, 20120619, When getting a station info just after freezing & Restarting tasks is failed, 
+tolerate it 10 times instead of force-disconneting. */
+		if(err)
+		{
+			if(rssi_cnt-- > 0)
+			{
+				WL_ERR(("2LEE rssi_cnt is %d, and err is %d\n", rssi_cnt, err));
+				return err;
+			}
+		}
+		else rssi_cnt = FAIL_LIMIT;
+/* LGE_CHANGE_E, moon-wifi@lge.com by 2lee, 20120619, When getting a station info just after freezing & Restarting tasks is failed, 
+tolerate it 10 times instead of force-disconneting. */
+
 		if (err) {
 			/* Disconnect due to zero BSSID or error to get RSSI */
 			WL_ERR(("force cfg80211_disconnected\n"));
@@ -3314,7 +3369,39 @@ static s32
 wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 	bool enabled, s32 timeout)
 {
+	//bill.jung@lge.com - For config file setup
+	#if 0
+	s32 pm;
+	s32 err = 0;
+	struct wl_priv *wl = wiphy_priv(wiphy);
+
+	CHECK_SYS_UP(wl);
+
+	if (wl->p2p_net == dev) {
+		return err;
+	}
+
+	pm = enabled ? PM_FAST : PM_OFF;
+	/* Do not enable the power save after assoc if it is p2p interface */
+	if (wl->p2p && wl->p2p->vif_created) {
+		WL_DBG(("Do not enable the power save for p2p interfaces even after assoc\n"));
+		pm = PM_OFF;
+	}
+	pm = htod32(pm);
+	WL_DBG(("power save %s\n", (pm ? "enabled" : "disabled")));
+	err = wldev_ioctl(dev, WLC_SET_PM, &pm, sizeof(pm), true);
+	if (unlikely(err)) {
+		if (err == -ENODEV)
+			WL_DBG(("net_device is not ready yet\n"));
+		else
+			WL_ERR(("error (%d)\n", err));
+		return err;
+	}
+	return err;
+	#endif
+
 	return 0;
+	//bill.jung@lge.com - For config file setup
 }
 
 static __used u32 wl_find_msb(u16 bit16)
@@ -4957,6 +5044,19 @@ static bool wl_is_linkdown(struct wl_priv *wl, const wl_event_msg_t *e)
 	u32 event = ntoh32(e->event_type);
 	u16 flags = ntoh16(e->flags);
 
+#ifdef BCMCCX
+	if(event == WLC_E_DISASSOC_IND || event == WLC_E_DEAUTH_IND)
+	{
+	/* ignore deauth from previous AP after roaming */
+		if (memcmp(g_current_bssid, &e->addr, 6) != 0) {
+//			WL_ERROR(("Deauth[%d] from different BSSID\n", e->event_type));
+			WL_ERR(("Deauth[%d] from different BSSID\n", e->event_type));
+			return false;
+		} else {
+			bzero(g_current_bssid, ETHER_ADDR_LEN);
+		}
+	}
+#endif /* BCMCCX */
 	if (event == WLC_E_DEAUTH_IND ||
 	event == WLC_E_DISASSOC_IND ||
 	event == WLC_E_DISASSOC ||
@@ -5115,7 +5215,14 @@ wl_notify_connect_status_ap(struct wl_priv *wl, struct net_device *ndev,
 		goto exit;
 	isfree = true;
 
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-07-20, for Assoc, ReAssoc is processed in hostapd	
+#ifdef CONFIG_COMMON_PATCH
+	if (((event == WLC_E_ASSOC_IND) || (event == WLC_E_REASSOC_IND)) 
+		&& reason == DOT11_SC_SUCCESS){
+#else
 	if (event == WLC_E_ASSOC_IND && reason == DOT11_SC_SUCCESS) {
+#endif
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-07-20, for Assoc, ReAssoc is processed in hostapd	    
 		cfg80211_rx_mgmt(ndev, freq, mgmt_frame, len, GFP_ATOMIC);
 	} else if (event == WLC_E_DISASSOC_IND) {
 		cfg80211_rx_mgmt(ndev, freq, mgmt_frame, len, GFP_ATOMIC);
@@ -5171,6 +5278,10 @@ wl_notify_connect_status(struct wl_priv *wl, struct net_device *ndev,
 			act = true;
 			wl_update_prof(wl, ndev, e, &act, WL_PROF_ACT);
 			wl_update_prof(wl, ndev, NULL, (void *)&e->addr, WL_PROF_BSSID);
+#ifdef BCMCCX
+			/* save current bssid */
+			memcpy(g_current_bssid, &e->addr, ETHER_ADDR_LEN);
+#endif /* BCMCCX */
 			if (wl_is_ibssmode(wl, ndev)) {
 				printk("cfg80211_ibss_joined\n");
 				cfg80211_ibss_joined(ndev, (s8 *)&e->addr,
@@ -5188,10 +5299,11 @@ wl_notify_connect_status(struct wl_priv *wl, struct net_device *ndev,
 
 		} else if (wl_is_linkdown(wl, e)) {
 			if (wl->scan_request) {
+				del_timer_sync(&wl->scan_timeout);
 				if (wl->escan_on) {
 					wl_notify_escan_complete(wl, ndev, true, true);
 				} else {
-					del_timer_sync(&wl->scan_timeout);
+//					del_timer_sync(&wl->scan_timeout);
 					wl_iscan_aborted(wl);
 				}
 			}
@@ -5252,6 +5364,10 @@ wl_notify_roaming_status(struct wl_priv *wl, struct net_device *ndev,
 	u32 status = be32_to_cpu(e->status);
 	WL_DBG(("Enter \n"));
 	if (event == WLC_E_ROAM && status == WLC_E_STATUS_SUCCESS) {
+#ifdef BCMCCX
+		/* save current bssid */
+		memcpy(g_current_bssid, &e->addr, ETHER_ADDR_LEN);
+#endif /* BCMCCX */
 		if (wl_get_drv_status(wl, CONNECTED, ndev))
 			wl_bss_roaming_done(wl, ndev, e, data);
 		else
@@ -5668,6 +5784,7 @@ wl_notify_rx_mgmt_frame(struct wl_priv *wl, struct net_device *ndev,
 		band = wiphy->bands[IEEE80211_BAND_2GHZ];
 	else
 		band = wiphy->bands[IEEE80211_BAND_5GHZ];
+/* TD 49362 fixed. moon-wifi@lge.com by kwisuk.kwon 20120417 : direct on reset */
 #if defined(CONFIG_COMMON_PATCH)
         if (band == NULL)
         {    
@@ -5675,6 +5792,7 @@ wl_notify_rx_mgmt_frame(struct wl_priv *wl, struct net_device *ndev,
                 goto exit;
         }    
 #endif
+/* TD 49362 fixed. moon-wifi@lge.com by kwisuk.kwon 20120417 : direct on reset */
 
 #if LINUX_VERSION_CODE == KERNEL_VERSION(2, 6, 38) && !defined(WL_COMPAT_WIRELESS)
 	freq = ieee80211_channel_to_frequency(channel);
@@ -6078,7 +6196,15 @@ static void wl_scan_timeout(unsigned long data)
 	if (wl->scan_request) {
 		WL_ERR(("timer expired\n"));
 		if (wl->escan_on)
+//LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-06-07, Prevent Kernel Panic due to scan abort noti. ioctl cmd in callback func.
+		{
+#ifdef CONFIG_COMMON_PATCH
+			wl_notify_escan_complete(wl, wl->escan_info.ndev, true, false);
+#else
 			wl_notify_escan_complete(wl, wl->escan_info.ndev, true, true);
+#endif
+		}
+//LGE_CHANGE_E, moon-wifi@lge.com by wo0ngs 2012-06-07, Prevent Kernel Panic due to scan abort noti. ioctl cmd in callback func.
 		else
 			wl_notify_iscan_complete(wl_to_iscan(wl), true);
 	}
@@ -6131,12 +6257,15 @@ wl_cfg80211_netdev_notifier_call(struct notifier_block * nb,
 	struct net_device *dev = ndev;
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct wl_priv *wl = wlcfg_drv_priv;
+//LGE_UPDATE_S, moon-wifi@lge.com by wo0ngs 2012-05-19, prevent kernel panic
 	int refcnt = 0;
+//LGE_UPDATE_S, moon-wifi@lge.com by wo0ngs 2012-05-19, prevent kernel panic	
 
 	WL_DBG(("Enter \n"));
 	if (!wdev || !wl || dev == wl_to_prmry_ndev(wl))
 		return NOTIFY_DONE;
 	switch (state) {
+//LGE_UPDATE_S, moon-wifi@lge.com by wo0ngs 2012-05-19, prevent kernel panic
 		case NETDEV_DOWN:
 			while(work_pending(&wdev->cleanup_work)){
 			     WL_ERR(("%s : [NETDEV_DOWN] work_pending (%d th)\n", __FUNCTION__, refcnt));
@@ -6146,6 +6275,7 @@ wl_cfg80211_netdev_notifier_call(struct notifier_block * nb,
 			     refcnt++;
 			}
 			break;	    	
+//LGE_UPDATE_E, moon-wifi@lge.com by wo0ngs 2012-05-19, prevent kernel panic 	    
 		case NETDEV_UNREGISTER:
 			/* after calling list_del_rcu(&wdev->list) */
 			wl_dealloc_netinfo(wl, ndev);
@@ -6373,6 +6503,19 @@ static s32 wl_escan_handler(struct wl_priv *wl,
 			mutex_unlock(&wl->usr_sync);
 		}
 	}
+// CSC_s sungchul.choi@lge.com Broadcom_Patch_2012_08_23
+#ifdef CONFIG_COMMON_PATCH
+        else if (status == WLC_E_STATUS_NEWSCAN)
+        {    
+                escan_result = (wl_escan_result_t *)data;
+                if (escan_result)
+                {    
+                        WL_ERR(("P:WLC_E_STATUS_NEWSCAN!!!!!!:scan_request[%p]", wl->scan_request));                        
+                        WL_ERR(("P:sync_id[%d]:bss_count[%d]", escan_result->sync_id, escan_result->bss_count));                 
+                }
+        }            
+#endif       
+// CSC_e sungchul.choi@lge.com Broadcom_Patch_2012_08_23
 	else {
 		WL_ERR(("unexpected Escan Event %d : abort\n", status));
 		wl->escan_info.escan_state = WL_ESCAN_STATE_IDLE;
@@ -7081,7 +7224,7 @@ s32 wl_cfg80211_up(void *para)
 		return BCME_VERSION;
 	}
 	ioctl_version = val;
-	WL_ERR(("WLC_GET_VERSION=%d\n", ioctl_version));
+	WL_TRACE(("WLC_GET_VERSION=%d\n", ioctl_version));
 
 	mutex_lock(&wl->usr_sync);
 	wl_cfg80211_attach_post(wl_to_prmry_ndev(wl));
