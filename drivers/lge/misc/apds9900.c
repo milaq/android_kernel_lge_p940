@@ -1140,7 +1140,8 @@ static void apds_9900_als_handler(struct apds9900_data *data)
 
 	// calculation LUX , please check datasheet from AVAGO
 	APDS_IAC1 = cdata - (data->coeff_b*irdata)/100;
-	APDS_IAC2 = (data->coeff_c*cdata - data->coeff_d*irdata)/100;
+	APDS_IAC2 = data->coeff_c*cdata - data->coeff_d*irdata;
+	APDS_IAC2 /= 100;
 	APDS_IAC = APDS_IAC1>APDS_IAC2?APDS_IAC1:APDS_IAC2;
 	LUX = (APDS_IAC*data->LPC)/100;	
 
