@@ -1143,7 +1143,8 @@ static void apds_9900_als_handler(struct apds9900_data *data)
 	APDS_IAC2 = data->coeff_c*cdata - data->coeff_d*irdata;
 	APDS_IAC2 /= 100;
 	APDS_IAC = APDS_IAC1>APDS_IAC2?APDS_IAC1:APDS_IAC2;
-	LUX = (APDS_IAC*data->LPC)/100;	
+	LUX = APDS_IAC*data->LPC;
+	LUX /= 100;
 
 	/* check prox under sunlight */
 	if ((data->prox_stat == 0) &&
@@ -1161,11 +1162,11 @@ static void apds_9900_als_handler(struct apds9900_data *data)
 				"apds9900: proximity: FAR 2\n");
 	}
 
-	//report vlaue to sensors.cpp
+	//report value to sensors.cpp
 
 	//set min and max value
 	LUX = LUX>5 ? LUX : 0;
-	LUX = LUX<20000 ? LUX : 20000; //10240, modified by SH Kim Avago
+	LUX = LUX<20000 ? LUX : 20000; //10240 [SH Kim Avago] - wtf, 20000? ABS is 10240. check this [milaq]
 
 	data->lux = LUX;
 
