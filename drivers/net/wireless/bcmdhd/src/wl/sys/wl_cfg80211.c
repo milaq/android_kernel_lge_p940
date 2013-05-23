@@ -3430,8 +3430,6 @@ static s32
 wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 	bool enabled, s32 timeout)
 {
-	//bill.jung@lge.com - For config file setup
-	#if 0
 	s32 pm;
 	s32 err = 0;
 	struct wl_priv *wl = wiphy_priv(wiphy);
@@ -3459,10 +3457,6 @@ wl_cfg80211_set_power_mgmt(struct wiphy *wiphy, struct net_device *dev,
 		return err;
 	}
 	return err;
-	#endif
-
-	return 0;
-	//bill.jung@lge.com - For config file setup
 }
 
 static __used u32 wl_find_msb(u16 bit16)
