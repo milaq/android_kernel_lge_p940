@@ -643,13 +643,7 @@ static void dhd_set_packet_filter(int value, dhd_pub_t *dhd)
 #if defined(CONFIG_HAS_EARLYSUSPEND)
 static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 {
-
-//bill.jung@lge.com - Don't set up filter and Power save mode
-#if 0
 	int power_mode = PM_MAX;
-#endif
-//bill.jung@lge.com - Don't set up filter and Power save mode
-
 	/* wl_pkt_filter_enable_t	enable_parm; */
 	char iovbuf[32];
 	int bcn_li_dtim = 3;
@@ -663,16 +657,10 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 
 				/* Kernel suspended */
 				DHD_ERROR(("%s: force extra Suspend setting \n", __FUNCTION__));
-				
-//bill.jung@lge.com - Don't set up filter and Power save mode
-#if 0
+
 				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
 				                 sizeof(power_mode), TRUE, 0);
 
-				/* Enable packet filter, only allow unicast packet to send up */
-				dhd_set_packet_filter(1, dhd);
-#endif
-//bill.jung@lge.com - Don't set up filter and Power save mode
 				/* Enable packet filter, only allow unicast packet to send up */
 				dhd_set_packet_filter(1, dhd);
 
@@ -693,17 +681,11 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 
 				/* Kernel resumed  */
 				DHD_TRACE(("%s: Remove extra suspend setting \n", __FUNCTION__));
-				
-//bill.jung@lge.com - Don't set up filter and Power save mode
-#if 0
+
 				power_mode = PM_FAST;
 				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
 				                 sizeof(power_mode), TRUE, 0);
 
-				/* disable pkt filter */
-				dhd_set_packet_filter(0, dhd);
-#endif
-//bill.jung@lge.com - Don't set up filter and Power save mode
 				/* disable pkt filter */
 				dhd_set_packet_filter(0, dhd);
 
@@ -3248,6 +3230,8 @@ static int dhd_preinit_proc(dhd_pub_t *dhd, int ifidx, char *name, char *value)
 		x.band = WLC_BAND_ALL;
 		return dhd_wl_ioctl_cmd(dhd, strcmp(name, "roam_delta") ?
 				WLC_SET_ROAM_TRIGGER : WLC_SET_ROAM_DELTA, &x, sizeof(x), TRUE, 0);
+//micha.laqua@gmail.com - don't set PM via config file
+#if 0
 	} else if (!strcmp(name, "PM")) {
 		var_int = (int)simple_strtol(value, NULL, 0);
 		
@@ -3263,6 +3247,8 @@ static int dhd_preinit_proc(dhd_pub_t *dhd, int ifidx, char *name, char *value)
 
 		return dhd_wl_ioctl_cmd(dhd, WLC_SET_PM,
 				&var_int, sizeof(var_int), TRUE, 0);
+#endif
+//micha.laqua@gmail.com - don't set PM via config file
 //LGE_CHANGE_S, moon-wifi@lge.com by wo0ngs 2012-06-12, BTAMP HT Channel Set		
 #ifdef WLBTAMP
 	}else if(!strcmp(name, "btamp_chan")) {
@@ -3472,9 +3458,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	char eventmask[WL_EVENTING_MASK_LEN];
 	char iovbuf[WL_EVENTING_MASK_LEN + 12];	/*  Room for "event_msgs" + '\0' + bitvec  */
 
-	//bill.jung@lge.com - For config file setup
-	//uint power_mode = PM_FAST;
-	//bill.jung@lge.com - For config file setup
+	uint power_mode = PM_FAST;
 	uint32 dongle_align = DHD_SDALIGN;
 	uint32 glom = 0;
 #ifdef BCMCCX
@@ -3645,9 +3629,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 		DHD_ERROR(("%s assoc_listen failed %d\n", __FUNCTION__, ret));
 
 	/* Set PowerSave mode */
-	//bill.jung@lge.com - For config file setup
-	//dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode, sizeof(power_mode), TRUE, 0);
-	//bill.jung@lge.com - For config file setup
+	dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode, sizeof(power_mode), TRUE, 0);
 
 	/* Match Host and Dongle rx alignment */
 	bcm_mkiovar("bus:txglomalign", (char *)&dongle_align, 4, iovbuf, sizeof(iovbuf));
