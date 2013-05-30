@@ -1166,7 +1166,7 @@ static void apds_9900_als_handler(struct apds9900_data *data)
 
 	//set min and max value
 	LUX = LUX>5 ? LUX : 0;
-	LUX = LUX<20000 ? LUX : 20000; //10240 [SH Kim Avago] - wtf, 20000? ABS is 10240. check this [milaq]
+	LUX = LUX<10240 ? LUX : 10240;
 
 	data->lux = LUX;
 
