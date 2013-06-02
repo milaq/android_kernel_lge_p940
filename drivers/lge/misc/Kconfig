@@ -12,6 +12,18 @@ config SENSORS_APDS9900
 	  If you say Y here you get support for the Avago APDS9900
 	  ambient light + proximity sensor.
 
+config SENSORS_APDS9900_LAZY_SENSOR_BLOB
+	bool "Lazy APDS9900 userspace sensorlib"
+	default n
+    depends on SENSORS_APDS9900
+	help
+	  Say Y here if you want the Avago APDS9900 driver to 
+	  report the luxvalues via polling rather than via interrupt.
+	  This also includes a synthetic jitter applied to the values
+	  in order to work around lazy sensorlibs which only pass
+	  the luxvalues if they are at least one off from the prior
+	  reading.
+
 config BACKLIGHT_LM3528
 	bool "Backlight Driver for LM3528"
 	depends on BACKLIGHT_CLASS_DEVICE

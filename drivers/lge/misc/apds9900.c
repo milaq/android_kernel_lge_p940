@@ -1,6 +1,7 @@
 /*
  *  apds9900.c - Linux kernel modules for ambient light + proximity sensor
  *
+ *  Copyright (C) 2013, Micha LaQua <micha.laqua@gmail.com>
  *  Copyright (C) 2011, 2012 LGE Inc.
  *  Copyright (C) 2010 Lee Kai Koon <kai-koon.lee@avagotech.com>
  *  Copyright (C) 2010 Avago Technologies
@@ -88,9 +89,14 @@
 #define APDS9900_STATUS_PINT	0x20
 #define APDS9900_STATUS_AINT	0x10
 
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+  #define APDS9900_DELAY_LOWBOUND	(5 * NSEC_PER_MSEC)
+  #define APDS9900_ALS_POLL_RATE	200		// in ms
+  #define APDS9900_ALS_JITTER_STRENGTH	5	// jitter is applied every x updates
+#endif
 
-#define APDS900_SENSOR_DEBUG 0
- #if APDS900_SENSOR_DEBUG
+#define APDS9900_SENSOR_DEBUG 0
+ #if APDS9900_SENSOR_DEBUG
  #define DEBUG_MSG(args...)  printk(args)
  #else
  #define DEBUG_MSG(args...)
@@ -106,6 +112,12 @@ struct apds9900_data {
 	struct i2c_client *client;
 	struct mutex update_lock;
 	struct delayed_work dwork;
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	struct work_struct work_light;
+	struct workqueue_struct *wql;
+	struct hrtimer timer;
+	ktime_t light_poll_delay;
+#endif
 	unsigned int enable;
 	unsigned int atime;
 	unsigned int ptime;
@@ -125,6 +137,9 @@ struct apds9900_data {
 	unsigned int prox_raw;
 
 	unsigned int lux;
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	unsigned int lux_jitter;
+#endif
 
 	unsigned int GA;
 	unsigned int DF;
@@ -180,7 +195,7 @@ static int apds9900_set_command(struct i2c_client *client, int command)
 static int apds9900_set_enable(struct i2c_client *client, int enable)
 {
 	int ret = 0;
-	
+
 	if (APDS_WATCHDOG_DEBUG)
 		printk("apds9900: %s,%d -->>\n", __FUNCTION__, __LINE__);
 	ret = i2c_smbus_write_byte_data(client,
@@ -703,7 +718,7 @@ static ssize_t apds9900_store_interrupt_prox(struct device *dev,
 	//int val = 0;
 	int ret;
 
-	DEBUG_MSG("apds9900_store_interrupt = [%d] apds_9900_initialized [%d] \n",rdata, apds_9900_initialized);
+	DEBUG_MSG("apds9900_store_interrupt = [%ld] apds_9900_initialized [%d] \n",rdata, apds_9900_initialized);
 	// if first enter , initializing
 	if (!apds_9900_initialized) {
 		ret = apds_9900_init(client);
@@ -757,7 +772,7 @@ static ssize_t apds9900_store_interrupt_als(struct device *dev,
 	int enable = (int)rdata;
 	int ret;
 
-	DEBUG_MSG("apds9900_store_interrupt = [%d] apds_9900_initialized [%d] \n",rdata, apds_9900_initialized);
+	DEBUG_MSG("apds9900_store_interrupt = [%ld] apds_9900_initialized [%d] \n",rdata, apds_9900_initialized);
 	// if first enter , initializing
 
 	if (!apds_9900_initialized) {
@@ -791,6 +806,20 @@ static ssize_t apds9900_store_interrupt_als(struct device *dev,
 	ret = apds9900_set_enable(client, data->enable);
 
 	enable_irq(data->irq);
+
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	if (data->enable && !hrtimer_active(&data->timer)) {
+		DEBUG_MSG("apds9900: starting poll timer, delay %lldns\n",
+		    ktime_to_ns(data->light_poll_delay));
+		/* push -1 to input subsystem to enable real value to go through next */
+		input_report_abs(data->input_dev_als, ABS_MISC, -1);
+		hrtimer_start(&data->timer, data->light_poll_delay, HRTIMER_MODE_REL);
+	} else if (!data->enable && hrtimer_active(&data->timer)) {
+		DEBUG_MSG("apds9900: cancelling poll timer\n");
+		hrtimer_cancel(&data->timer);
+		cancel_work_sync(&data->work_light);
+	}
+#endif
 
 	DEBUG_MSG("apds9900_store_interrupt data->enable [%x] \n", data->enable);
 
@@ -876,13 +905,41 @@ static const struct attribute_group apds9900_attr_group = {
 static ssize_t poll_delay_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	struct apds9900_data *data = dev_get_drvdata(dev);
+	return sprintf(buf, "%lld\n", ktime_to_ns(data->light_poll_delay));
+#else
 	return 0;
+#endif
 }
 
 static ssize_t poll_delay_store(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t size)
 {
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	struct apds9900_data *data = dev_get_drvdata(dev);
+	int64_t new_delay;
+	int err;
+
+	err = strict_strtoll(buf, 10, &new_delay);
+	if (err < 0)
+		return err;
+
+	DEBUG_MSG("apds9900: new delay = %lldns, old delay = %lldns\n",
+		    new_delay, ktime_to_ns(data->light_poll_delay));
+
+	if (new_delay < APDS9900_DELAY_LOWBOUND) {
+		DEBUG_MSG("apds9900: new delay less than low bound, so set "
+			"delay to %lld\n", (int64_t)APDS9900_DELAY_LOWBOUND);
+		new_delay = APDS9900_DELAY_LOWBOUND;
+	}
+
+	mutex_lock(&data->update_lock);
+	if (new_delay != ktime_to_ns(data->light_poll_delay))
+		data->light_poll_delay = ns_to_ktime(new_delay);
+	mutex_unlock(&data->update_lock);
+#endif
 	return size;
 }
 
@@ -1162,18 +1219,17 @@ static void apds_9900_als_handler(struct apds9900_data *data)
 				"apds9900: proximity: FAR 2\n");
 	}
 
-	//report value to sensors.cpp
-
 	//set min and max value
 	LUX = LUX>5 ? LUX : 0;
 	LUX = LUX<10240 ? LUX : 10240;
 
 	data->lux = LUX;
 
-	/* x-axis raw acceleration */
+#if !defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
 	input_report_abs(data->input_dev_als, ABS_MISC, LUX);
- 
 	input_sync(data->input_dev_als);
+#endif
+
 	apds9900_set_enable(client, 0);
 
 	// set threshold for als
@@ -1212,7 +1268,7 @@ static void apds_9900_irq_work_func(struct work_struct *work)
 		apds_9900_als_handler(data);			
 	}
 
-	//DEBUG_MSG("apds_9900_irq_work_func status = %d\n",status);
+	DEBUG_MSG("apds_9900_irq_work_func status = %d\n",status);
 	
 	// ACK about interupt handling
 	if(status & APDS9900_STATUS_PINT) {
@@ -1255,7 +1311,43 @@ static irqreturn_t apds_9900_irq_handler(int irq, void *dev_id)
 
 	apds9900_reschedule_work(data, 0);
 	return IRQ_HANDLED;
-}	
+}
+
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+static void apds9900_light_work_func(struct work_struct *work)
+{
+	struct apds9900_data *data =
+		container_of(work, struct apds9900_data, work_light);
+
+	int lux = data->lux;
+	if (lux >= 0) {
+		/* !!! NASTY HACK !!!
+		 * 
+		 * synthetic luxvalue jitter
+		 * to work around lazy sensorlib blobs
+		*/
+		if (data->lux_jitter < APDS9900_ALS_JITTER_STRENGTH) {
+			data->lux_jitter++;
+		} else {
+			lux += 1;
+			data->lux_jitter = 0;
+		}
+
+		DEBUG_MSG("reporting als lux value %d\n", lux);
+		input_report_abs(data->input_dev_als, ABS_MISC, lux);
+		input_sync(data->input_dev_als);
+	}
+}
+
+static enum hrtimer_restart apds9900_timer_func(struct hrtimer *timer)
+{
+	struct apds9900_data *data =
+		container_of(timer, struct apds9900_data, timer);
+	queue_work(data->wql, &data->work_light);
+	hrtimer_forward_now(&data->timer, data->light_poll_delay);
+	return HRTIMER_RESTART;
+}
+#endif
 
 /*
  * I2C init/probing/exit functions
@@ -1343,6 +1435,26 @@ static int __devinit apds9900_probe(struct i2c_client *client,
 	disable_irq(data->irq);
 
 	INIT_DELAYED_WORK(&data->dwork, apds_9900_irq_work_func);
+
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	/* hrtimer settings.  we poll for light values using a timer. */
+	hrtimer_init(&data->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	data->light_poll_delay = ns_to_ktime(APDS9900_ALS_POLL_RATE * NSEC_PER_MSEC);
+	data->timer.function = apds9900_timer_func;
+
+	/* the timer just fires off a work queue request.
+	 * do this in a thread for maximum safety
+	 */
+	data->wql = create_singlethread_workqueue("apds9900_light_wq");
+	if (!data->wql) {
+		err = -ENOMEM;
+		dev_err(&client->dev, "%s(): Could not create workqueue for als\n", __func__);
+		goto exit_create_light_workqueue;
+	}
+	/* this is the thread function we run on the work queue */
+	INIT_WORK(&data->work_light, apds9900_light_work_func);
+#endif
+	
 	data->input_dev_prox = input_allocate_device();
 	if (!data->input_dev_prox) {
 		err = -ENOMEM;
@@ -1412,9 +1524,15 @@ exit_als_sysfs_create_group:
 exit_als_input_register_device_failed:
 	input_unregister_device(data->input_dev_als);
 exit_als_input_dev_alloc_failed:
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	destroy_workqueue(data->wql);
+#endif
 exit_prox_input_register_device_failed:
 	input_unregister_device(data->input_dev_prox);
 exit_prox_input_dev_alloc_failed:
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+exit_create_light_workqueue:
+#endif
 	free_irq(data->irq, data);
 exit_request_irq_failed:
 	gpio_free(pdata->irq_gpio);
@@ -1445,6 +1563,9 @@ static int __devexit apds9900_remove(struct i2c_client *client)
 
 	input_unregister_device(data->input_dev_als);
 	input_unregister_device(data->input_dev_prox);
+#if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
+	destroy_workqueue(data->wql);
+#endif
 	free_irq(data->irq, data);
 	gpio_free(data->irq_gpio);
 
