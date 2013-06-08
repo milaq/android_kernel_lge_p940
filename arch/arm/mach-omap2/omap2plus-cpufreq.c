@@ -160,7 +160,11 @@ static unsigned int omap_thermal_lower_speed(void)
 	unsigned int curr;
 	int i;
 
+#if defined(CONFIG_OMAP4_ALWAYS_PERFORMANCE_SILICON)
+	curr = omap_getspeed(0);
+#else
 	curr = max_thermal;
+#endif
 
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
 		if (freq_table[i].frequency > max &&
@@ -475,7 +479,16 @@ static int __cpuinit omap_cpu_init(struct cpufreq_policy *policy)
 	cpufreq_frequency_table_get_attr(freq_table, policy->cpu);
 
 	policy->min = policy->cpuinfo.min_freq;
+#if defined(CONFIG_OMAP4_ALWAYS_PERFORMANCE_SILICON)
+	if (cpu_is_omap443x())
+		policy->max = 1008000;
+	else if (cpu_is_omap446x())
+		policy->max = 1200000;
+	else if (cpu_is_omap447x())
+		policy->max = 1300000;
+#else
 	policy->max = policy->cpuinfo.max_freq;
+#endif
 	policy->cur = omap_getspeed(policy->cpu);
 
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++)
