@@ -55,15 +55,17 @@
 
 #define FEATURE_SMPL
 
-#ifndef  __DEBUG_POWER
-#define __DEBUG_POWER
+//#define __DEBUG_POWER
+#ifdef  __DEBUG_POWER
 
 #define __DEBUG_PMIC
 #define __DEBUG_CHARGER
 #define __DEBUG_FUELGAUGE
 #define __DEBUG_MUIC
 
-#ifdef __DEBUG_PMIC 
+#endif /* __DEBUG_POWER */
+
+#ifdef __DEBUG_PMIC
 #define DPWR(fmt, args...) printk("[PWR] " fmt "\n", ##args) 
 #else
 #define DPWR(fmt, args...) 
@@ -92,8 +94,6 @@
 #else
 #define DMUIC(fmt, args...) 
 #endif
-
-#endif /* __DEBUG_POWER */
 
 
 #define BATT_VOLT_SHUTDOWN		3400 //3300->3400
@@ -2406,9 +2406,7 @@ static void twl6030_bci_battery_work(struct work_struct *work)
 	}
 
 	D("[bclee][TWL6030] di->valid_charging_source=%d, charging_ic_status=%d", di->valid_charging_source, charging_ic_status);
-  /* log added to check fuel gauge stability - some dude @ LGE*/
-  /* next time remove it prior shipping you brainiacs - milaq */
-  /* should not occur on !DEBUG - milaq */
+  /* log added to check fuel gauge stability */
   DGAU("cap:%d - ui_cap:%d - volt:%d - chg_src:%d \n",di->capacity,di->ui_capacity,di->fg_voltage_mV,di->charger_source);
 	if (max17043_get_ui_capacity()==100 &&
 	   di->charger_source != POWER_SUPPLY_TYPE_BATTERY)
