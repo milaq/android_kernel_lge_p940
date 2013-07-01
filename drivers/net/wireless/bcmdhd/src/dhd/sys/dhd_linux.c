@@ -4937,13 +4937,16 @@ int net_os_set_suspend_disable(struct net_device *dev, int val)
 int net_os_set_suspend(struct net_device *dev, int val)
 {
 	int ret = 0;
-#if defined(CONFIG_HAS_EARLYSUSPEND)
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
 
 	if (dhd) {
+#if defined(CONFIG_HAS_EARLYSUSPEND)
 		ret = dhd_set_suspend(val, &dhd->pub);
-	}
 #endif /* defined(CONFIG_HAS_EARLYSUSPEND) */
+#ifdef WL_CFG80211
+		wl_cfg80211_update_power_mode(dev);
+#endif
+	}
 	return ret;
 }
 
