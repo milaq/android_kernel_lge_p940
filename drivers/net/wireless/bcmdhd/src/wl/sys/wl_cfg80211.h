@@ -442,6 +442,7 @@ struct wl_priv {
 	bool p2p_supported;
 	struct btcoex_info *btcoex_info;
 	struct timer_list scan_timeout;   /* Timer for catch scan event timeout */
+	u16 scan_busy_count;
 };
 
 
