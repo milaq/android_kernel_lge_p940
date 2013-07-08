@@ -91,7 +91,7 @@
 
 #if defined(CONFIG_SENSORS_APDS9900_LAZY_SENSOR_BLOB)
   #define APDS9900_DELAY_LOWBOUND	(5 * NSEC_PER_MSEC)
-  #define APDS9900_ALS_POLL_RATE	200		// in ms
+  #define APDS9900_ALS_POLL_RATE	400		// in ms
   #define APDS9900_ALS_JITTER_STRENGTH	5	// jitter is applied every x updates
 #endif
 
