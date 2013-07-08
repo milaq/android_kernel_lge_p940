@@ -39,7 +39,11 @@
 #define MCM_DBG_ERR_LOG 1
 #define MCM_DBG_ERR_RECOVERY_LOG 1
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* TI HSI driver (from HSI_DRIVER_VERSION 0.4.2) can suppport port 1 and 2, 
+	but IMC XMD currently supports port 1 only */
 #define XMD_SUPPORT_PORT 1
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 static struct hsi_chn hsi_all_channels[MAX_HSI_CHANNELS] = {
 	{"CONTROL",  HSI_CH_NOT_USED},
@@ -60,7 +64,7 @@ static struct hsi_chn hsi_all_channels[MAX_HSI_CHANNELS] = {
 	{"CHANNEL15",HSI_CH_FREE},
 };
 /* TODO: Fine tune as required */
-#define HSI_MCM_TTY_TX_TIMEOUT_VAL (4*HZ) 
+#define HSI_MCM_TTY_TX_TIMEOUT_VAL (4*HZ) /*timeout, in seconds*/  /* LGE_UPDAT 2011.12.31_hyungsun.seo@lge.com_HSI pending issue during RIL Recovery*/
 
 static unsigned int hsi_mcm_state;
 static int is_dlp_reset_in_progress;
@@ -72,12 +76,15 @@ static struct workqueue_struct *hsi_write_wq;
 #if defined (HSI_LL_ENABLE_RX_BUF_RETRY_WQ)
 static struct workqueue_struct *hsi_buf_retry_wq;
 #endif
+
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #define ENABLE_RECOVERY_WAKE_LOCK
 
 #if defined (ENABLE_RECOVERY_WAKE_LOCK)
 #define RECOVERY_WAKELOCK_TIME		(30*HZ)
 struct wake_lock xmd_recovery_wake_lock;
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 void (*xmd_boot_cb)(void);
 static void hsi_read_work(struct work_struct *work);
@@ -181,6 +188,11 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 	int n = 0;
 	int flag = 1;
 	int ret = 0;
+#if defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_P2)
+/* [START] Workqueue Flag Check of hsi_write_work 2012-08-24 seunghwan.jin@lge.com */
+        unsigned int wq_flags = 0;
+/* [END] Workqueue Flag Check of hsi_write_work 2012-08-24 seunghwan.jin@lge.com */
+#endif
 #ifdef XMD_TX_MULTI_PACKET
 	if (d && hsi_channels[chno].write_queued == HSI_TRUE) {
 		if (d->being_used == HSI_FALSE && (d->size + len) < HSI_MEM_LARGE_BLOCK_SIZE) {
@@ -229,11 +241,29 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 			hsi_channels[chno].tx_blocked = 1;
 			hsi_mem_free(buf);
 			PREPARE_WORK(&hsi_channels[chno].write_work, hsi_write_work);
+#if defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_P2)
+			wq_flags = *((unsigned int *)hsi_write_wq);
+			if (wq_flags & WQ_DYING) {
+				printk("mcm: Workqueue Flag Check is done 0x%x.\n", wq_flags);
+			} else {
+				queue_work(hsi_write_wq, &hsi_channels[chno].write_work);
+			}
+#else
 			queue_work(hsi_write_wq, &hsi_channels[chno].write_work);
+#endif
 			ret = -EBUSY;
 		} else if (n == 1) {
 			PREPARE_WORK(&hsi_channels[chno].write_work, hsi_write_work);
+#if defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_P2)
+			wq_flags = *((unsigned int *)hsi_write_wq);
+			if (wq_flags & WQ_DYING) {
+				printk("mcm: Workqueue Flag Check is done 0x%x.\n", wq_flags);
+			} else {
+				queue_work(hsi_write_wq, &hsi_channels[chno].write_work);
+			}
+#else
 			queue_work(hsi_write_wq, &hsi_channels[chno].write_work);
+#endif
 			ret = 0;
 		}
 	}
@@ -257,6 +287,7 @@ static int hsi_ch_tty_write(int chno, void *data, int len)
 	hsi_channels[chno].write_happening = HSI_TRUE;
 
 	err = hsi_ll_write(chno, (unsigned char *)buf, len);
+
 	if (err < 0) {
 #if MCM_DBG_ERR_LOG
 		printk("\nmcm: hsi_ll_write(...) failed. err=%d\n",err);
@@ -266,6 +297,12 @@ static int hsi_ch_tty_write(int chno, void *data, int len)
 #if MCM_DBG_LOG
 		printk("\nmcm:locking mutex for ch: %d\n",chno);
 #endif
+
+/* LGE_UPDATE_START 2011.12.31_hyungsun.seo@lge.com_HSI pending issue during RIL Recovery*/
+#if 0  //ORGINAL
+		wait_event (hsi_channels[chno].write_wait,
+					hsi_channels[chno].write_happening == HSI_FALSE);
+#else  //RIL Recovery fail patch
 		wait_event_timeout (hsi_channels[chno].write_wait,
 							hsi_channels[chno].write_happening == HSI_FALSE,
 							HSI_MCM_TTY_TX_TIMEOUT_VAL);
@@ -273,6 +310,8 @@ static int hsi_ch_tty_write(int chno, void *data, int len)
 			printk("mcm:[RIL Recovery]hsi_ch_tty_write failed. err= -9\n");
 			err = -9;
 			}
+#endif
+/* LGE_UPDATE_END 2011.12.31_hyungsun.seo@lge.com_HSI pending issue during RIL Recovery*/
 	}
 
 	return err;
@@ -331,12 +370,17 @@ void xmd_ch_close(int chno)
 {
 	printk("\nmcm:closing channel %d.\n", chno);
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE)
+	/******************************************
+		LGE-RIL CHANNEL : 1 , 2, 3, 4, 5, 8, 11
+	******************************************/
 	if((chno == 1)||(chno == 2)||(chno == 3)
 	||(chno == 4)||(chno == 5)||(chno == 8)||(chno == 11)){
 #else
 	if(chno == XMD_RIL_RECOVERY_CHANNEL) {
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_ERR_RECOVERY_LOG
 		printk("\nmcm: Ch %d closed so starting Recovery.\n", chno);
@@ -375,12 +419,17 @@ int xmd_ch_open(struct xmd_ch_info* info, void (*notify_cb)(int chno))
 					return -EINVAL;
 				}
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE)
+				/******************************************
+					LGE-RIL CHANNEL : 1 , 2, 3, 4, 5, 8, 11
+				******************************************/
 				if(((i == 1)||(i == 2)||(i == 3)
 				||(i == 4)||(i == 5)||(i == 8)||(i == 11)) &&
 #else
 				if ((i == XMD_RIL_RECOVERY_CHANNEL) &&
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 					(hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY)) {
 #if MCM_DBG_ERR_RECOVERY_LOG
 						printk("\nmcm: Recovery completed by chno %d.\n", i);
@@ -495,6 +544,18 @@ void hsi_write_work(struct work_struct *work)
 	struct x_data *data = NULL;
 	int err;
 
+// IMC_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* RIL recovery memory initialization  */
+#if 0
+	if (hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
+#if MCM_DBG_ERR_RECOVERY_LOG
+		printk("\nmcm:Dropping packets of channel %d from WQ as error recovery is in progress\n", chno);
+#endif
+		goto quit_write_wq;
+	}
+#endif
+// IMC_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
+
 	if (hsi_channels[chno].write_queued == HSI_TRUE) {
 #if MCM_DBG_LOG
 		printk("\nmcm: write wq already in progress\n");
@@ -505,6 +566,8 @@ void hsi_write_work(struct work_struct *work)
 	hsi_channels[chno].write_queued = HSI_TRUE;
 
 	while ((data = read_q(chno, &hsi_channels[chno].tx_q)) != NULL) {
+// IMC_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* RIL recovery memory initialization  */
 #if 1
 		if (hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
 #if MCM_DBG_ERR_RECOVERY_LOG
@@ -515,6 +578,7 @@ void hsi_write_work(struct work_struct *work)
 			continue;
 		}
 #endif
+// IMC_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 		hsi_channels[chno].write_happening = HSI_TRUE;
 		data->being_used = HSI_TRUE;
 		err = hsi_ll_write(chno, (unsigned char *)data->buf, data->size);
@@ -542,6 +606,12 @@ void hsi_write_work(struct work_struct *work)
 		}
 	}
 
+// IMC_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+#if 0
+/* RIL recovery memory initialization  */
+quit_write_wq:
+#endif
+// IMC_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 	hsi_channels[chno].write_queued = HSI_FALSE;
 }
 
@@ -561,8 +631,7 @@ static void hsi_buf_retry_work(struct work_struct *work)
 	}
 	/*GFP_NOFAIL not available so switching to while loop*/
 	while(temp_data.buffer == NULL) {
-		temp_data.buffer = kmalloc(temp_data.size,
-								   GFP_DMA | GFP_KERNEL);
+		temp_data.buffer = kmalloc(temp_data.size, GFP_DMA | GFP_KERNEL);
 	}
 #if MCM_DBG_LOG
 	printk("\nHSI_LL: Allocating mem(size=%d) in retry Q for ch %d\n",
@@ -666,9 +735,20 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 		printk("\nmcm:unlocking mutex for ch: %d\n",chno);
 #endif
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* Uplink Throughput issue */
+#if 1
 		hsi_mem_free(data->buffer);
+#endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 		hsi_channels[chno].write_happening = HSI_FALSE;
 		wake_up(&hsi_channels[chno].write_wait);
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* Uplink Throughput issue */
+#if 0
+		hsi_mem_free(data->buffer);
+#endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_LOG
 		printk("\nmcm: write complete cb, ch %d\n",chno);
@@ -765,19 +845,38 @@ void __init xmd_ch_init(void)
 
 	hsi_mem_init();
 
+	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+	/* TI HSI driver (from HSI_DRIVER_VERSION 0.4.2) can suppport port 1 and 2, 
+		but IMC XMD currently supports port 1 only */
 	hsi_ll_init(XMD_SUPPORT_PORT, hsi_ch_cb);
+	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 	/* Create and initialize work q */
+//mo2haewoon.you@lge.com => [START]
+//RIP-28065 - Fix workqueue for HSI kernel panic
+#if 1
+    hsi_read_wq = create_singlethread_workqueue("hsi-read-wq");
+    hsi_write_wq = create_singlethread_workqueue("hsi-write-wq");
+#if defined (HSI_LL_ENABLE_RX_BUF_RETRY_WQ)
+    hsi_buf_retry_wq = create_singlethread_workqueue("hsi_buf_retry_wq");
+#endif
+
+#else
 	hsi_read_wq = create_workqueue("hsi-read-wq");
 	hsi_write_wq = create_workqueue("hsi-write-wq");
 #if defined (HSI_LL_ENABLE_RX_BUF_RETRY_WQ)
 	hsi_buf_retry_wq = create_workqueue("hsi_buf_retry_wq");
 #endif
+//RIP-28065 - Fix workqueue for HSI kernel panic
+//mo2haewoon.you@lge.com <= [END]
+#endif
 	INIT_WORK(&XMD_DLP_RECOVERY_wq, xmd_dlp_recovery_wq);
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (ENABLE_RECOVERY_WAKE_LOCK)
 	wake_lock_init(&xmd_recovery_wake_lock, WAKE_LOCK_SUSPEND, "xmd-recovery-wake");
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 	hsi_mcm_state = HSI_MCM_STATE_INITIALIZED;
 }
@@ -794,11 +893,14 @@ void xmd_ch_exit(void)
 	hsi_ll_shutdown();
 	hsi_mcm_state = HSI_MCM_STATE_UNDEF;
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (ENABLE_RECOVERY_WAKE_LOCK)
 	wake_lock_destroy(&xmd_recovery_wake_lock);
 #endif	
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 }
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 int xmd_is_recovery_state(void)
 {
 	if(hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {		
@@ -807,22 +909,40 @@ int xmd_is_recovery_state(void)
 
 	return 0;		
 }
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 int xmd_ch_reset(void)
 {
 	int ch_i;
 	int size = ARRAY_SIZE(hsi_all_channels);
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (ENABLE_RECOVERY_WAKE_LOCK)
 	wake_lock_timeout(&xmd_recovery_wake_lock, RECOVERY_WAKELOCK_TIME);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+#if 0
+	if(	hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
+#if MCM_DBG_ERR_RECOVERY_LOG
+		printk("\nmcm: xmd_ch_reset already HSI_MCM_STATE_ERR_RECOVERY in progress\n");
+#endif
+		return -1;
+	}
+
+	hsi_mcm_state = HSI_MCM_STATE_ERR_RECOVERY;
+#endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
+
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE)
 	/*Modem Reset */
 	printk("\[MIPI-HSI][P2_ICS] ifx_pmu_reset.\n");
 
 	ifx_pmu_reset();	//RIP-11203
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_ERR_RECOVERY_LOG
 	printk("\nmcm: HSI DLP Error Recovery initiated.\n");
@@ -842,10 +962,12 @@ int xmd_ch_reset(void)
 		init_q(ch_i);
 	}
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE)
 	/* TODO: Fine tune to required value. */
 	msleep(5000);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_ERR_RECOVERY_LOG
 	printk("\nmcm: HSI DLP Error Recovery completed waiting for CP ready indication from RIL.\n");
@@ -858,14 +980,17 @@ int xmd_ch_reset(void)
 
 static void xmd_ch_reinit(void)
 {
+	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 	if(hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
 		hsi_mem_reinit();
 		hsi_mcm_state = HSI_MCM_STATE_INITIALIZED;
 	}
+	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 }
 
 void xmd_dlp_recovery(void)
 {
+	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 	if(is_dlp_reset_in_progress == 0) {
 
 		if( hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
@@ -887,6 +1012,7 @@ void xmd_dlp_recovery(void)
 		printk("\nmcm: xmd_dlp_recovery already in progress\n");
 #endif
 	}
+	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 }
 
 static void xmd_dlp_recovery_wq(struct work_struct *cp_crash_wq)

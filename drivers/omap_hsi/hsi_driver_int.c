@@ -20,11 +20,15 @@
 
 #include "hsi_driver.h"
 #include <linux/delay.h>
-#if defined(CONFIG_MACH_LGE_P2)
+#if defined(CONFIG_MACH_LGE_P2) || defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_COSMO) || defined(CONFIG_MACH_LGE_CX2)
 #include <linux/wakelock.h>
 
 static struct wake_lock cawake_wake_lock;
-#endif
+#endif //CONFIG_MACH_LGE_P2
+
+// LGE_ADD_START 20120605 seunghwan.jin@lge.com
+extern char simple_hsi_log_debug_enable;
+// LGE_ADD_END 20120605 seunghwan.jin@lge.com
 
 void hsi_reset_ch_read(struct hsi_channel *ch)
 {
@@ -546,16 +550,27 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 
 	/* Check CAWAKE line status */
 	if (cawake_status) {
-		dev_dbg(hsi_ctrl->dev, "CAWAKE rising edge detected\n");
-
-#if defined(CONFIG_MACH_LGE_P2)
+// LGE_UPDATE_START 20120605 seunghwan.jin@lge.com
+        //dev_dbg(hsi_ctrl->dev, "CAWAKE rising edge detected\n"); // Original code is blocked. Remain and unblock this code when you remove updated area.
+    if (simple_hsi_log_debug_enable == '1')
+        printk("CAWAKE rising edge detected\n");
+    else
+        dev_dbg(hsi_ctrl->dev, "CAWAKE rising edge detected\n");
+// LGE_UPDATE_END 20120605 seunghwan.jin@lge.com
+#if defined(CONFIG_MACH_LGE_P2) || defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_COSMO) || defined(CONFIG_MACH_LGE_CX2)
 		wake_lock(&cawake_wake_lock);
-#endif
+#endif //CONFIG_MACH_LGE_P2
 
 		/* Check for possible mismatch (race condition) */
 		if (unlikely(pport->cawake_status)) {
 			dev_warn(hsi_ctrl->dev,
 				"Missed previous CAWAKE falling edge...\n");
+/* LGE_UPDATE_START 2011.09.10?hyungsun.seo@lge.com?_disabled */
+			//spin_unlock(&hsi_ctrl->lock);
+			//hsi_port_event_handler(pport, HSI_EVENT_CAWAKE_DOWN,
+			//			NULL);
+			//spin_lock(&hsi_ctrl->lock);
+/* LGE_UPDATE_END 2011.09.10??hyungsun.seo@lge.com?_disabled */
 
 			/* In case another CAWAKE interrupt occured and caused
 			 * a race condition, clear CAWAKE backup interrupt to
@@ -568,6 +583,11 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 		/* Allow data reception */
 		hsi_hsr_resume(hsi_ctrl);
 
+/* LGE_UPDATE_START 2011.09.10?hyungsun.seo@lge.com?_disabled */
+		//spin_unlock(&hsi_ctrl->lock);
+		//hsi_port_event_handler(pport, HSI_EVENT_CAWAKE_UP, NULL);
+		//spin_lock(&hsi_ctrl->lock);
+/* LGE_UPDATE_END 2011.09.10??hyungsun.seo@lge.com?_disabled */
 
 		/*
 		* HSI - OMAP4430-2.2BUG00055: i702
@@ -577,9 +597,15 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 		if (is_hsi_errata(hsi_ctrl, HSI_ERRATUM_i702_PM_HSI_SWAKEUP))
 			omap_pm_clear_dsp_wake_up();
 	} else {
-		dev_dbg(hsi_ctrl->dev, "CAWAKE falling edge detected\n");
+// LGE_UPDATE_START 20120605 seunghwan.jin@lge.com
+        //dev_dbg(hsi_ctrl->dev, "CAWAKE falling edge detected\n"); // Original code is blocked. Remain and unblock this code when you remove updated area.
+        if (simple_hsi_log_debug_enable == '1')
+            printk("CAWAKE falling edge detected\n");
+        else
+            dev_dbg(hsi_ctrl->dev, "CAWAKE falling edge detected\n");
+// LGE_UPDATE_END 20120605 seunghwan.jin@lge.com
 
-#if defined(CONFIG_MACH_LGE_P2)
+#if defined(CONFIG_MACH_LGE_P2) || defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_COSMO) || defined(CONFIG_MACH_LGE_CX2)
 		wake_unlock(&cawake_wake_lock);
 #endif
 
@@ -594,6 +620,12 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 		if (unlikely(!pport->cawake_status)) {
 			dev_warn(hsi_ctrl->dev,
 				"Missed previous CAWAKE rising edge...\n");
+/* LGE_UPDATE_START 2011.09.10?hyungsun.seo@lge.com?_disabled */
+			//spin_unlock(&hsi_ctrl->lock);
+			//hsi_port_event_handler(pport, HSI_EVENT_CAWAKE_UP,
+			//			NULL);
+			//spin_lock(&hsi_ctrl->lock);
+/* LGE_UPDATE_END 2011.09.10??hyungsun.seo@lge.com?_disabled */
 
 			/* In case another CAWAKE interrupt occured and caused
 			 * a race condition, clear CAWAKE backup interrupt to
@@ -606,6 +638,11 @@ int hsi_do_cawake_process(struct hsi_port *pport)
 		/* Forbid data reception */
 		hsi_hsr_suspend(hsi_ctrl);
 
+/* LGE_UPDATE_START 2011.09.10?hyungsun.seo@lge.com?_disabled */
+		//spin_unlock(&hsi_ctrl->lock);
+		//hsi_port_event_handler(pport, HSI_EVENT_CAWAKE_DOWN, NULL);
+		//spin_lock(&hsi_ctrl->lock);
+/* LGE_UPDATE_END 2011.09.10??hyungsun.seo@lge.com?_disabled */
 	}
 
 	return 0;
@@ -823,7 +860,7 @@ int __init hsi_mpu_init(struct hsi_port *hsi_p, const char *irq_name)
 		return -EBUSY;
 	}
 
-#if defined(CONFIG_MACH_LGE_P2)
+#if defined(CONFIG_MACH_LGE_P2) || defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_COSMO) || defined(CONFIG_MACH_LGE_CX2)
 	wake_lock_init(&cawake_wake_lock, WAKE_LOCK_SUSPEND, "cawake");
 #endif //CONFIG_MACH_LGE_P2
 

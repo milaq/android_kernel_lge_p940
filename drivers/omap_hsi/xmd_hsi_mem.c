@@ -48,6 +48,7 @@ unsigned char *hsi_mem_fb_block[HSI_MEM_NUM_OF_FB_BLK] = {NULL};
 #endif
 static spinlock_t hsi_mem_lock;
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 int mem_dbg_blk0_max;			/* maximum number of allocated blocks from blk0 */
 int mem_dbg_blk1_max;			/* maximum number of allocated blocks from blk1 */
@@ -79,6 +80,7 @@ static void hsi_dbg_mem_log(char* txt, int* pre_max, int cur_index)
 	}
 }
 #endif /* HSI_MEM_DEBUG */
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 /*****************************************************************************/
 /* Function:... hsi_mem_mem_init                                             */
@@ -130,9 +132,11 @@ int hsi_mem_init(void)
 #endif
 	spin_lock_init(&hsi_mem_lock);
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 	hsi_dbg_mem_init();
 #endif /* HSI_MEM_DEBUG */
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 	is_hsi_mem_init = 1;
 	}
@@ -148,6 +152,7 @@ int hsi_mem_uninit(void)
 	return 0;
 }
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 /*****************************************************************************/
 /* Function:... hsi_mem_reinit                                               */
 /* Description: Initialization of the memory pools for RIL recovery                                     */
@@ -185,14 +190,17 @@ int hsi_mem_reinit(void)
 
 	/*TODO : How to free allocated buffer from BUF retry WQ.*/
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 	hsi_dbg_mem_init();
 #endif /* HSI_MEM_DEBUG */
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 	spin_unlock_bh(&hsi_mem_lock);
 #endif
 	return 0;
 }
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 /*****************************************************************************/
 /* Function:... hsi_mem_alloc                                                */
@@ -216,9 +224,11 @@ void *hsi_mem_alloc(int size)
 			if (hsi_mem_blk0_ptr[i] == NULL) {
 				hsi_mem_blk0_ptr[i] = hsi_mem_blk0[i];
 				buf = (void *)hsi_mem_blk0_ptr[i];
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 			hsi_dbg_mem_log("HSI_MEM_BLOCK0_SIZE(512B)", &mem_dbg_blk0_max, i);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 				goto quit_mem_alloc;
 			}
 		}
@@ -232,9 +242,11 @@ void *hsi_mem_alloc(int size)
 			if (hsi_mem_blk1_ptr[i] == NULL) {
 				hsi_mem_blk1_ptr[i] = hsi_mem_blk1[i];
 				buf = (void *)hsi_mem_blk1_ptr[i];
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 				hsi_dbg_mem_log("HSI_MEM_BLOCK1_SIZE(2KB)", &mem_dbg_blk1_max, i);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]	
 				goto quit_mem_alloc;
 			}
 		}
@@ -243,19 +255,24 @@ void *hsi_mem_alloc(int size)
 #endif
 	}
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* Uplink Throughput issue : share pre-allocated buffer (2KB & 8KB) */
 #if 1
 	if((size > HSI_MEM_BLOCK0_SIZE) && (size <= HSI_MEM_BLOCK2_SIZE)) {
 #else
 	if((size > HSI_MEM_BLOCK1_SIZE) && (size <= HSI_MEM_BLOCK2_SIZE)) {
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 		for(i=0; i < HSI_MEM_NUM_OF_BLK2;i++) {
 			if (hsi_mem_blk2_ptr[i] == NULL) {
 				hsi_mem_blk2_ptr[i] = hsi_mem_blk2[i];
 				buf = (void *)hsi_mem_blk2_ptr[i];
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 				hsi_dbg_mem_log("HSI_MEM_BLOCK2_SIZE(8KB)", &mem_dbg_blk2_max, i);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]	
 				
 				goto quit_mem_alloc;
 			}
@@ -265,19 +282,24 @@ void *hsi_mem_alloc(int size)
 #endif
 	}
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* Uplink Throughput issue : share pre-allocated buffer (8KB & 30KB) */
 #if 1
 	if((size > HSI_MEM_BLOCK1_SIZE) && (size <= HSI_MEM_BLOCK3_SIZE)) {
 #else
 	if((size > HSI_MEM_BLOCK2_SIZE) && (size <= HSI_MEM_BLOCK3_SIZE)) {
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 		for(i=0; i < HSI_MEM_NUM_OF_BLK3;i++) {
 			if (hsi_mem_blk3_ptr[i] == NULL) {
 				hsi_mem_blk3_ptr[i] = hsi_mem_blk3[i];
 				buf = (void *)hsi_mem_blk3_ptr[i];
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 				hsi_dbg_mem_log("HSI_MEM_BLOCK3_SIZE(30KB)", &mem_dbg_blk3_max, i);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]				
 				goto quit_mem_alloc;
 			}
 		}
@@ -302,9 +324,11 @@ void *hsi_mem_alloc(int size)
 				buf = NULL;
 			} else {
 				buf = (void *) hsi_mem_fb_block[i];
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_MEM_DEBUG)
 			hsi_dbg_mem_log("HSI_MEM_NUM_OF_FB_BLK", &mem_dbg_fb_max, i);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]				
 			}
 			goto quit_mem_alloc;
 		}

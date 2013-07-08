@@ -1,7 +1,7 @@
 /*
  * xmd-ch.h
  *
-	 * Copyright (C) 2011 Intel Mobile Communications. All rights reserved.
+ * Copyright (C) 2011 Intel Mobile Communications. All rights reserved.
  *
  * Author: Chaitanya <Chaitanya.Khened@intel.com>
  *
@@ -36,6 +36,10 @@
 #endif
 
 #define XMD_RIL_RECOVERY_CHANNEL 1
+
+#ifndef PRIVATE_INFO_LENGTH
+#define PRIVATE_INFO_LENGTH 5
+#endif
 
 typedef enum _HSI_CH_USER_
 {
@@ -90,10 +94,12 @@ int xmd_ch_write(int  chno, void *data, int len);
 void xmd_ch_register_xmd_boot_cb(void (*fn)(void));
 int wait_for_xmd_ack(void);
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
 extern void ifx_schedule_cp_dump_or_reset(void);
 #endif
 
 int xmd_is_recovery_state(void);
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #endif

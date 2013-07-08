@@ -36,6 +36,14 @@
 
 #include "hsi_driver.h"
 
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+//mo2haewoon.you => [START]
+#include <linux/interrupt.h>
+#include <mach/gpio.h>
+#include "../../../arch/arm/mach-omap2/mux.h"
+//mo2haewoon.you <= [END]
+#endif
+
 #define HSI_MODULENAME "omap_hsi"
 #define	HSI_DRIVER_VERSION	"0.4.3"
 #define HSI_RESETDONE_MAX_RETRIES	5 /* Max 5*L4 Read cycles waiting for */
@@ -43,10 +51,20 @@
 #define HSI_RESETDONE_NORMAL_RETRIES	1 /* Reset should complete in 1 R/W */
 					  /* cycle */
 
-#if defined(CONFIG_MACH_LGE_COSMO_REV_D) || defined(CONFIG_MACH_LGE_COSMO_DOMASTIC)
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+#if defined(CONFIG_MACH_LGE_COSMO)
 /* Notify active/sleep status of AP to CP*/
 #define MODEM_SEND 		121 /* MODEM_SEND gpio_121 */
 #endif
+
+//mo2haewoon.you => [START]
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+#define OMAP_SEND       122 /* OMAP_SEND gpio 122 */
+static int irq_num_122;
+#endif
+//mo2haewoon.you => [END]
+
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 void hsi_hsr_suspend(struct hsi_dev *hsi_ctrl)
 {
 	struct hsi_platform_data *pdata = hsi_ctrl->dev->platform_data;
@@ -685,9 +703,12 @@ void hsi_clocks_disable_channel(struct device *dev, u8 channel_number,
 	}
 
 	if (hsi_is_hst_controller_busy(hsi_ctrl))
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* MIPI Unstable Downlink Throughput : Disable log ( dev_warn = >  dev_dbg) */
 #if 1
 		dev_dbg(dev, "Disabling clocks with HST FSM not IDLE !\n");
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]		
 #ifdef K3_0_PORTING_HSI_MISSING_FEATURE
 
 	/* Allow Fclk to change */
@@ -816,7 +837,9 @@ static void hsi_controller_exit(struct hsi_dev *hsi_ctrl)
 	hsi_ports_exit(hsi_ctrl, hsi_ctrl->max_p);
 }
 
-#if defined(CONFIG_MACH_LGE_COSMO_REV_D) || defined(CONFIG_MACH_LGE_COSMO_DOMASTIC)
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* Notify active/sleep status of AP to CP*/
+#if defined(CONFIG_MACH_LGE_COSMO)
 static void ifx_init_modem_send(void)
 {
 	int ret = 0;			
@@ -829,8 +852,43 @@ static void ifx_init_modem_send(void)
 	gpio_direction_output(MODEM_SEND, 1);
 }
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 /* HSI Platform Device probing & hsi_device registration */
+
+//mo2haewoon.you => [START]
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+extern int xmd_ch_write(int  chno, void *data, int len);
+static void ifx_check_handle_work(struct work_struct *work)
+{
+	extern void msleep(unsigned int msecs);
+	printk("[TEST] %s ( %d line)\n",__func__,__LINE__);
+	msleep(100);
+
+	xmd_ch_write(9, "AT\r\n", 4);
+//mo2haewoon.you => [START]
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+	enable_irq(irq_num_122);
+#endif
+//mo2haewoon.you <= [END]
+}
+static irqreturn_t ifx_check_handle_srdy_irq(int irq, void *handle)
+{
+	struct hsi_dev *ctrl = handle;
+	
+	printk("[TEST] %s ( %d line)\n",__func__,__LINE__);
+	queue_work(ctrl->ifx_wq, &ctrl->ifx_work);    
+
+//mo2haewoon.you => [START]
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+	disable_irq_nosync(irq_num_122);
+#endif
+//mo2haewoon.you <= [END]
+	return IRQ_HANDLED; 
+}
+#endif
+//mo2haewoon.you => [END]
+
 static int __init hsi_platform_device_probe(struct platform_device *pd)
 {
 	struct hsi_platform_data *pdata = dev_get_platdata(&pd->dev);
@@ -860,6 +918,15 @@ static int __init hsi_platform_device_probe(struct platform_device *pd)
 			" struct hsi_dev\n");
 		return -ENOMEM;
 	}
+//mo2haewoon.you => [START]
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+	INIT_WORK(&hsi_ctrl->ifx_work,ifx_check_handle_work);
+	hsi_ctrl->ifx_wq = create_singlethread_workqueue("ifx_wq");
+    if(!hsi_ctrl->ifx_wq){
+		printk("Failed to setup workqueue - ifx_wq \n");          
+    }
+#endif
+//mo2haewoon.you => [END]
 
 	platform_set_drvdata(pd, hsi_ctrl);
 	err = hsi_controller_init(hsi_ctrl, pd);
@@ -906,6 +973,20 @@ static int __init hsi_platform_device_probe(struct platform_device *pd)
 		goto rollback3;
 	}
 
+//mo2haewoon.you => [START]
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+	/* Set the ts_gpio pin mux */
+	err = gpio_request(OMAP_SEND, "gpio_122");
+	gpio_direction_input(OMAP_SEND);
+	irq_num_122 = gpio_to_irq(OMAP_SEND);
+	
+	err = request_irq(irq_num_122,ifx_check_handle_srdy_irq, IRQF_TRIGGER_RISING,HSI_MODULENAME, hsi_ctrl);
+	if (err < 0) {
+		pr_err("Modem-wait-check: couldn't request gpio interrupt 122\n");
+	}
+#endif
+//mo2haewoon.you => [END]
+
 	/* Allow HSI to wake up the platform */
 	device_init_wakeup(hsi_ctrl->dev, true);
 
@@ -928,15 +1009,17 @@ static int __init hsi_platform_device_probe(struct platform_device *pd)
 	/* From here no need for HSI HW access */
 	hsi_clocks_disable(hsi_ctrl->dev, __func__);
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
 	/* Set IMC CP core dump */
 	IFX_CP_CRASH_DUMP_INIT();
 #endif
 
-#if defined(CONFIG_MACH_LGE_COSMO_REV_D) || defined(CONFIG_MACH_LGE_COSMO_DOMASTIC)
+#if defined(CONFIG_MACH_LGE_COSMO)
 	/* Notify active/sleep status of AP to CP*/
 	ifx_init_modem_send();
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 	return 0;
 
@@ -1009,12 +1092,14 @@ static int hsi_pm_suspend(struct device *dev)
 		return -EBUSY;
 	}
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 /* Notify active/sleep status of AP to CP */
-#if defined(CONFIG_MACH_LGE_COSMO_REV_D) || defined(CONFIG_MACH_LGE_COSMO_DOMASTIC)
+#if defined(CONFIG_MACH_LGE_COSMO)
 	/* set sleep status of AP */
 	dev_info(dev, "%s\n", __func__);
 	gpio_set_value(MODEM_SEND, 0);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 	/* Perform HSI board specific action before platform suspend */
 	if (pdata->board_suspend)
@@ -1069,11 +1154,14 @@ static int hsi_pm_resume(struct device *dev)
 			pdata->board_resume(hsi_ctrl->hsi_port[i].port_number,
 					    device_may_wakeup(dev));
 
-#if defined(CONFIG_MACH_LGE_COSMO_REV_D) || defined(CONFIG_MACH_LGE_COSMO_DOMASTIC)
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* Notify active/sleep status of AP to CP*/
+#if defined(CONFIG_MACH_LGE_COSMO)
 	/* set sleep status of AP */
 	dev_info(dev, "%s\n", __func__);
 	gpio_set_value(MODEM_SEND, 1);
 #endif
+	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 	return 0;
 }
@@ -1253,11 +1341,11 @@ static void __exit hsi_driver_exit(void)
 	platform_driver_unregister(&hsi_pdriver);
 	hsi_debug_exit();
 	hsi_bus_exit();
-
 	pr_info(LOG_NAME "HSI DRIVER removed\n");
 }
 
 late_initcall(hsi_driver_init);  //hyungsun.seo_111213 added for ICS
+//module_init(hsi_driver_init);
 module_exit(hsi_driver_exit);
 
 MODULE_ALIAS("platform:" HSI_MODULENAME);

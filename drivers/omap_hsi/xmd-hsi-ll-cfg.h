@@ -49,15 +49,49 @@
 /* Frame Size */
 #define HSI_LL_MAX_FRAME_SIZE       HSI_FRAMESIZE_DEFAULT
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* For 96MHZ Base CLK, 96MHZ(0) 48MHZ(1)  24MHZ(3)
+    Divisor value => HSI CLK == HSI base CLK/(1+divisor value)
+    Clock Change 48MHz => 96MHz */
 #define HSI_LL_DIVISOR_VALUE        HSI_DIVISOR_DEFAULT /* For 96MHZ Base CLK, 96MHZ(0) 48MHZ(1)  24MHZ(3) */
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 /*To enable Power management */
 #define HSI_LL_ENABLE_PM
+//mo2haewoon.you@lge.com [START]
+#if defined(CONFIG_MACH_LGE_COSMO)  || defined(CONFIG_MACH_LGE_CX2)
+#define HSI_LL_WAKE_LOCK
+
+#define HSI_LL_AC_WAKE_TIMEOUT		3 * HZ
+#define HSI_LL_CA_WAKE_TIMEOUT		3 * HZ
+#endif
+//mo2haewoon.you@lge.com [END]
 
 #define HSI_LL_COUNTERS_VALUE	   (HSI_COUNTERS_FT_DEFAULT | \
 									HSI_COUNTERS_TB_DEFAULT | \
 									HSI_COUNTERS_FB_DEFAULT)
 
+#ifdef CONFIG_MACH_LGE_COSMO_REV_C
+/* Work around for Modem Bug for TX/RX data buffer size config. Size should be multiple of 16 */
+/* Enable for ES1 XG626(RevC) & Disable ES2 XG626(RevD~)*/
+//#define HSI_LL_DATA_MUL_OF_16 */
+#endif
+
+/* Enable timers for DLP recovery. */
+/* NOTE: This will initiate onlY DLP recovery and not TTY/RMNET or RIL recover,
+   For RIL recovery this timer should be disabled as 2 timers can only create
+   SYNC issues */
+/* #define HSI_LL_ENABLE_TIMERS */
+
+/* Use this define if TX retry delay WQ has to be enabled.
+   If MODEM has logic where it does not send NAK, then below define
+   is not required.*/
+/* #define HSI_LL_ENABLE_TX_RETRY_WQ */
+
+/* Enable this to make sure that NAK is not sent to MODEM if buf is not
+   available. When buf is not available AP does not send any response(NAK)
+   instead waits for buffer and then sends NAK. Also it's necessarry that
+   MODEM TX Timers should be disabled to avoid CP side TX timeouts.*/
 #define HSI_LL_ENABLE_RX_BUF_RETRY_WQ
 
 #define HSI_LL_MAX_OPEN_CONN_RETRIES		5 //200       /* Max Retries for OPEN_CONNECT_OCTECT */

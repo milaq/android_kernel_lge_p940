@@ -52,12 +52,15 @@
 #define MAX_PART_PKT_SIZE   2500
 #define MAX_PART_PKT_MTU    4096
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+/* #define RMNET_CHANGE_MTU */
 #define RMNET_ARP_ENABLE
 
 #if defined (RMNET_CHANGE_MTU)
 #define RMNET_MIN_MTU		64
 #define RMNET_MAX_MTU		4096
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 typedef enum {
 	RMNET_FULL_PACKET,
@@ -117,6 +120,8 @@ static struct {
 } rmnet_ch_block_info[16];
 
 #if defined (RMNET_ARP_ENABLE)
+//20110721, ramesh.chandrasekaran@teleca.com, B-IFX enhancement
+//Description: arp response structure
 struct arp_resp {
 	__be16          ar_hrd;         /* format of hardware address   */
 	__be16          ar_pro;         /* format of protocol address   */
@@ -134,7 +139,44 @@ struct arp_resp {
 #define RMNET_COL_SIZE 30
 #define RMNET_ERROR_STR_SIZE 20
 
+//static unsigned int rmnet_cnt = 0;
 #endif
+
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]	
+#if 0 //defined (RMNET_ERR)
+static void xmd_net_dump(const unsigned char *txt, const unsigned char *buf, int len)
+{
+	char dump_buf_str[(RMNET_COL_SIZE+1)*3] = {0,};
+
+	int index = 0;
+	char ch = 0;
+	char* cur_str = dump_buf_str;
+
+	if ((buf != NULL) && (len >= 0))
+	{
+		while(index < RMNET_COL_SIZE)
+		{
+			if(index < len)
+			{
+				ch = buf[index];
+				sprintf(cur_str, "x%.2x", ch);
+			}
+			else
+			{
+				sprintf(cur_str, "$$$");
+			}
+
+			cur_str = cur_str+3;
+			index++;
+		}
+
+		*cur_str = 0;
+		printk("%s: rmnet_cnt [%d]th : len [%d] buf [%s]\n", txt, rmnet_cnt, len, dump_buf_str);
+		rmnet_cnt++;
+	}
+}
+#endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 static int count_this_packet(void *_hdr, int len)
 {
@@ -157,7 +199,18 @@ static void do_check_active(struct work_struct *work)
 	struct rmnet_private *p =
 		container_of(work, struct rmnet_private, work.work);
 
+	/*
+	 * Soft timers do not wake the cpu from suspend.
+	 * If we are in suspend, do_check_active is only called once at the
+	 * timeout time instead of polling at POLL_DELAY interval. Otherwise the
+	 * cpu will sleeps and the timer can fire much much later than POLL_DELAY
+	 * casuing a skew in time calculations.
+	 */
 	if (in_suspend) {
+		/*
+		 * Assume for N packets sent durring this session, they are
+		 * uniformly distributed durring the timeout window.
+		 */
 		int tmp = p->timeout_us * 2 -
 			(p->timeout_us / (p->active_countdown + 1));
 		tmp /= 1000;
@@ -167,6 +220,10 @@ static void do_check_active(struct work_struct *work)
 		return;
 	}
 
+	/*
+	 * Poll if not in suspend, since this gives more accurate tracking of
+	 * rmnet sessions.
+	 */
 	p->restart_count++;
 	if (--p->active_countdown == 0) {
 		p->awake_time_ms += p->restart_count * POLL_DELAY / 1000;
@@ -178,6 +235,10 @@ static void do_check_active(struct work_struct *work)
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
+/*
+ * If early suspend is enabled then we specify two timeout values,
+ * screen on (default), and screen is off.
+ */
 static unsigned long timeout_suspend_us;
 static struct device *rmnet0;
 
@@ -405,13 +466,14 @@ static void xmd_trans_packet(
 		return;
 	}
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (RMNET_CHANGE_MTU)
 	if (sz > p->mtu)
 #else
 	if (sz > RMNET_MTU_SIZE)
 #endif
 	{
-
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 #if defined (RMNET_ERR)
 		printk("rmnet:xmd_trans_packet() discarding %d pkt len\n", sz);
 #endif
@@ -444,7 +506,33 @@ static void xmd_trans_packet(
 			wake_lock_timeout(&p->wake_lock, HZ / 2);
 
 			/* adding ethernet header */
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]	
+#if 0
+			{
+				char temp[] = {0xB6,0x91,0x24,0xa8,0x14,0x72,0xb6,0x91,0x24,0xa8,0x14,0x72,0x08,0x0};
+				struct ethhdr *eth_hdr = (struct ethhdr *) temp;
 
+				if (type == RMNET_IPV6_VER) {
+					eth_hdr->h_proto = htons(ETH_P_IPV6);
+				}
+#if defined (RMNET_ARP_ENABLE)
+				else if (type == RMNET_ARP_VER) {
+					eth_hdr->h_proto = htons(ETH_P_ARP);
+				}
+#endif				
+				else /* RMNET_IPV4_VER */
+				{
+					eth_hdr->h_proto = htons(ETH_P_IP);
+				}
+
+				memcpy((void *)eth_hdr->h_dest,
+					   (void*)dev->dev_addr,
+					   sizeof(eth_hdr->h_dest));
+				memcpy((void *)ptr,
+					   (void *)eth_hdr,
+					   sizeof(struct ethhdr));
+			}
+#else
 			if (type != p->ip_type)
 			{
 				if (type == RMNET_IPV6_VER) {
@@ -464,6 +552,8 @@ static void xmd_trans_packet(
 			}
 			
 			memcpy((void *)ptr, (void *)&p->eth_hdr, ETH_HLEN);
+#endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 			memcpy(ptr + ETH_HLEN, buf, sz - ETH_HLEN);
 
@@ -823,6 +913,7 @@ static void xmd_net_notify(int chno)
 			hdr_size = sizeof(struct ipv6hdr);
 		} else {
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]	
 #if 1
 			/***********************************************************************
 				1. Case of "+PBREADY" : RIL recovery is needed
@@ -870,6 +961,7 @@ static void xmd_net_notify(int chno)
 			past_packet[info->id].state = RMNET_FULL_PACKET;
 
 			}
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 #endif
 		break;
 		}
@@ -1106,6 +1198,26 @@ static int rmnet_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto ok_xmit;
 	}
 
+/* Check IPv4 & IPv6 */
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]	
+#if 0 //defined (RMNET_ERR)
+	if ((skb->protocol != htons(ETH_P_IP)) && (skb->protocol != htons(ETH_P_IPV6))
+#if defined (RMNET_ARP_ENABLE)		
+		&& (skb->protocol != htons(ETH_P_ARP))
+#endif		
+		) {
+
+		xmd_net_dump("rmnet_xmit", (char*)skb->data, skb->len);
+	}
+#endif
+#if 0 //defined (RMNET_ERR)
+	if ((skb->data[ETH_HLEN] != 0x45) && (skb->data[ETH_HLEN] != 0x60)) {
+
+		xmd_net_dump("rmnet_xmit", (char*)skb->data, skb->len);
+	}
+#endif	
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
+
 #if defined (RMNET_ARP_ENABLE)
 	if (skb->protocol == htons(ETH_P_ARP)) {
 		fake_arp_response(dev, skb);
@@ -1210,6 +1322,7 @@ static void rmnet_tx_timeout(struct net_device *dev)
 	}
 }
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (RMNET_CHANGE_MTU)
 /* Netdevice change MTU request */
 static int rmnet_nd_change_mtu(struct net_device *dev, int new_mtu)
@@ -1243,6 +1356,7 @@ static int rmnet_nd_change_mtu(struct net_device *dev, int new_mtu)
 	return 0;
 }
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 static struct net_device_ops rmnet_ops = {
 	.ndo_open = rmnet_open,
@@ -1251,9 +1365,11 @@ static struct net_device_ops rmnet_ops = {
 	.ndo_get_stats = rmnet_get_stats,
 	.ndo_set_multicast_list = rmnet_set_multicast_list,
 	.ndo_tx_timeout = rmnet_tx_timeout,
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (RMNET_CHANGE_MTU)
 	.ndo_change_mtu = rmnet_nd_change_mtu,
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 };
 
 static void __init rmnet_setup(struct net_device *dev)
@@ -1273,6 +1389,7 @@ static void __init rmnet_setup(struct net_device *dev)
 	random_ether_addr(dev->dev_addr);
 }
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 static void rmnet_set_ip4_ethr_hdr(struct net_device *dev, struct rmnet_private *p)
 {
 	unsigned char faddr[ETH_ALEN] = { 0xb6, 0x91, 0x24, 0xa8, 0x14, 0x72 };
@@ -1287,6 +1404,7 @@ static void rmnet_set_ip4_ethr_hdr(struct net_device *dev, struct rmnet_private 
 	
 	p->ip_type = RMNET_IPV4_VER;
 }
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 static int __init rmnet_init(void)
 {
@@ -1339,7 +1457,9 @@ static int __init rmnet_init(void)
 						WAKE_LOCK_SUSPEND,
 						rmnet_channels[n].name);
 
+		// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 		rmnet_set_ip4_ethr_hdr(dev, p);
+		// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #ifdef CONFIG_MSM_RMNET_DEBUG
 		p->timeout_us = timeout_us;
