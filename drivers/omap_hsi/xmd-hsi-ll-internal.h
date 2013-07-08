@@ -26,10 +26,12 @@
 #define HSI_LL_MAX_CMD_Q_SIZE       32
 #define HSI_LL_TIMER_Q_SIZE (3 * HSI_LL_MAX_CHANNELS)
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined (HSI_LL_ENABLE_PM)
 #define HSI_LL_PV_READ_CMD_Q_TIMEOUT   80
 #define HSI_LL_PV_THREAD_SLEEP_TIME    20
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 enum{
 	FALSE,

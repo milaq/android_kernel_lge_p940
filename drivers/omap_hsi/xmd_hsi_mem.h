@@ -34,7 +34,11 @@
 	else static pools are used. */
 #define HSI_MEM_USE_DMA_BUFS
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #define HSI_MEM_ENABLE_LOGS
+
+/* #define HSI_MEM_DEBUG */
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 /*TODO: Fine tune below memory configuration as per requirement. */
 
@@ -45,11 +49,13 @@
 
 #define HSI_MEM_LARGE_BLOCK_SIZE  HSI_MEM_BLOCK3_SIZE
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #define HSI_MEM_NUM_OF_BLK0		80
 #define HSI_MEM_NUM_OF_BLK1	 	80
 #define HSI_MEM_NUM_OF_BLK2	 	10
 #define HSI_MEM_NUM_OF_BLK3 	8
 #define HSI_MEM_NUM_OF_FB_BLK	120
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 /*****************************************************************************/
 /* TYPE DEFINITIONS                                                          */
@@ -60,7 +66,9 @@
 /*****************************************************************************/
 int hsi_mem_init(void);
 int hsi_mem_uninit(void);
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 int hsi_mem_reinit(void);
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 void* hsi_mem_alloc(int size);
 void hsi_mem_free(void* ptr);
 #endif /* XMD_HSI_MEM__H */

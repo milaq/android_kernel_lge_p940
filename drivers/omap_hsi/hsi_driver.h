@@ -62,6 +62,12 @@
 
 #define LOG_NAME		"OMAP HSI: "
 
+//mo2haewoon.you => [START]
+#if defined(CONFIG_MACH_LGE_COSMO_SU760) || defined(CONFIG_MACH_LGE_CX2_SU870)
+#define HSI_SEND_ATCOMMAND_TO_CAWAKE
+#endif
+//mo2haewoon.you <= [START]
+
 /* SW strategies for HSI FIFO mapping */
 enum {
 	HSI_FIFO_MAPPING_UNDEF = 0,
@@ -216,6 +222,13 @@ struct hsi_dev { /* HSI_TODO:  should be later renamed into hsi_controller*/
 	struct dentry *dir;
 #endif
 	struct device *dev;
+
+//mo2haewoon.you => [START]
+#if defined (HSI_SEND_ATCOMMAND_TO_CAWAKE)
+        struct work_struct      ifx_work;
+        struct workqueue_struct *ifx_wq;
+#endif
+//mo2haewoon.you <= [END]
 };
 
 /**
@@ -346,9 +359,11 @@ void hsi_debug_remove_ctrl(struct hsi_dev *hsi_ctrl);
 #define	hsi_debug_exit()
 #endif /* CONFIG_DEBUG_FS */
 
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE_COSMOPOLITAN)
 extern int IFX_CP_CRASH_DUMP_INIT(void);
 #endif
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 static inline struct hsi_channel *hsi_ctrl_get_ch(struct hsi_dev *hsi_ctrl,
 					      unsigned int port,

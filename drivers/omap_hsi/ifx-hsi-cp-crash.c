@@ -2,6 +2,7 @@
 /* ifx-hsi-cp-crash.c
  *
  * Copyright (C) 2010 LGE. All rights reserved.
+ * Author: Jaesung.woo <jaesung.woo@lge.com>
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -145,6 +146,23 @@ static void CP_CRASH_wq_func(struct work_struct *cp_crash_wq)
 	}
 	else
 	{
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]	
+#if 0	
+		/*****************************************************************************
+			1. Case of HSI_LL_MSG_BREAK in hsi_ll_read_complete_cb
+			2. Case of invalid packet in Rmnet from CP (becasue of very low battery and etc)
+		*****************************************************************************/
+		printk(KERN_INFO "[CP CRASH IRQ] CP_CRASH_wq_func() - CP_CRASH_INT_N - Invaild\n");
+
+#ifndef ENABLE_CP_CRASH_RESET	// LGE_RIL_RECOVERY
+		printk(" CP CRASH! immediate RIL/CP reset");
+		input_report_key(in_dev, EVENT_KEY, 1);
+		input_report_key(in_dev, EVENT_KEY, 0);
+		input_sync(in_dev);
+		printk("[CPW] input_report_key(): %d\n", EVENT_KEY);
+#endif
+#endif		
+// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 	}
 }
 

@@ -483,9 +483,12 @@ int __init hsi_debug_add_ctrl(struct hsi_dev *hsi_ctrl)
 				    &hsi_ctrl->hsi_port[port],
 				    &hsi_port_regs_fops);
 
+		// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
+		// S_IWUGO -> S_IWUSR
 		debugfs_create_file("counters", S_IRUGO | S_IWUSR, dir,
 				    &hsi_ctrl->hsi_port[port],
 				    &hsi_port_counters_fops);
+		// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 	}
 
 	dir = debugfs_create_dir("gdd", hsi_ctrl->dir);
