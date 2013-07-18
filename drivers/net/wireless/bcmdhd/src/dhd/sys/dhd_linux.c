@@ -710,7 +710,7 @@ static void dhd_suspend_resume_helper(struct dhd_info *dhd, int val)
 	DHD_OS_WAKE_LOCK(dhdp);
 	/* Set flag when early suspend was called */
 	dhdp->in_suspend = val;
-	if ((!dhdp->suspend_disable_flag) && (dhd_check_ap_wfd_mode_set(dhdp) == FALSE))
+	if (!dhdp->suspend_disable_flag)
 		dhd_set_suspend(val, dhdp);
 	DHD_OS_WAKE_UNLOCK(dhdp);
 }
@@ -3564,7 +3564,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 			arpoe = 0;
 #endif /* (ARP_OFFLOAD_SUPPORT) */
 #ifdef PKT_FILTER_SUPPORT
-			dhd_pkt_filter_enable = FALSE;
+			dhd_pkt_filter_enable = TRUE;
 #endif
 		}
 	}
