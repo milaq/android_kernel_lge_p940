@@ -225,7 +225,7 @@ static int xmd_ch_tty_open(struct tty_struct *tty, struct file *f)
 	char init_flag = 0;
 
 	int n = tty->index;
-#if defined(CONFIG_MACH_LGE_U2) || defined(CONFIG_MACH_LGE_P2)
+#ifdef CONFIG_MACH_LGE_U2
 	int gpio_value = gpio_get_value(122);
 
 	printk("xmdtty: gpio 122 value is %d ##########\n", gpio_value);
