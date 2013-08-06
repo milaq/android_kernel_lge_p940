@@ -3014,10 +3014,11 @@ static int twl6030_bci_battery_get_property(struct power_supply *psy,
 		}
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+	/* voltage_now is uV not mV */
 #if defined(CONFIG_LG_FW_MAX17043_FUEL_GAUGE)
-		val->intval = di->fg_voltage_mV;
+		val->intval = di->fg_voltage_mV * 1000;
 #else
-		val->intval = di->avg_voltage_mV;
+		val->intval = di->avg_voltage_mV * 1000;
 #endif
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
