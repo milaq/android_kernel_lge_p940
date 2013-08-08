@@ -128,7 +128,7 @@ struct x_data* read_q(int chno, struct xq* q)
 	}
 
 #if MCM_DBG_LOG
-	printk("\nmcm: [read_q]  head = %d, tail = %d\n",q->head,q->tail);
+	printk("mcm: [read_q]  head = %d, tail = %d\n",q->head,q->tail);
 #endif
 
 	spin_lock_bh(&hsi_channels[chno].lock);
@@ -136,7 +136,7 @@ struct x_data* read_q(int chno, struct xq* q)
 	if (q->head == q->tail) {
 		spin_unlock_bh(&hsi_channels[chno].lock);
 #if MCM_DBG_LOG
-		printk("\nmcm: Q empty [read] \n");
+		printk("mcm: Q empty [read] \n");
 #endif
 		return NULL;
 	}
@@ -172,7 +172,7 @@ int write_q(struct xq* q, char *buf, int size, struct x_data **data)
 		q->tail = temp;
 	} else {
 #if MCM_DBG_LOG
-		printk("\nmcm:Q full [write], head = %d, tail = %d\n",q->head,q->tail);
+		printk("mcm:Q full [write], head = %d, tail = %d\n",q->head,q->tail);
 #endif
 		return 0;
 	}
@@ -197,7 +197,7 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 	if (d && hsi_channels[chno].write_queued == HSI_TRUE) {
 		if (d->being_used == HSI_FALSE && (d->size + len) < HSI_MEM_LARGE_BLOCK_SIZE) {
 #if MCM_DBG_LOG
-			printk("\nmcm: Adding in the queued buffer for ch %d\n",chno);
+			printk("mcm: Adding in the queued buffer for ch %d\n",chno);
 #endif
 			buf = d->buf + d->size;
 			d->size += len;
@@ -218,7 +218,7 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 
 	if (!buf || !data) {
 #if MCM_DBG_ERR_LOG
-		printk("\nmcm: Failed to alloc memory So Cannot transfer packet.\n");
+		printk("mcm: Failed to alloc memory So Cannot transfer packet.\n");
 #endif
 		return -ENOMEM;
 	}
@@ -232,11 +232,11 @@ static int hsi_ch_net_write(int chno, void *data, int len)
 			hsi_channels[chno].pending_tx_msgs++;
 		}
 #if MCM_DBG_LOG
-		printk("\nmcm: n = %d\n",n);
+		printk("mcm: n = %d\n",n);
 #endif
 		if (n == 0) {
 #if MCM_DBG_LOG
-			printk("\nmcm: rmnet TX queue is full for channel %d, So cannot transfer this packet.\n",chno);
+			printk("mcm: rmnet TX queue is full for channel %d, So cannot transfer this packet.\n",chno);
 #endif
 			hsi_channels[chno].tx_blocked = 1;
 			hsi_mem_free(buf);
@@ -290,12 +290,12 @@ static int hsi_ch_tty_write(int chno, void *data, int len)
 
 	if (err < 0) {
 #if MCM_DBG_ERR_LOG
-		printk("\nmcm: hsi_ll_write(...) failed. err=%d\n",err);
+		printk("mcm: hsi_ll_write(...) failed. err=%d\n",err);
 #endif
 		hsi_channels[chno].write_happening = HSI_FALSE;
 	} else {
 #if MCM_DBG_LOG
-		printk("\nmcm:locking mutex for ch: %d\n",chno);
+		printk("mcm:locking mutex for ch: %d\n",chno);
 #endif
 
 /* LGE_UPDATE_START 2011.12.31_hyungsun.seo@lge.com_HSI pending issue during RIL Recovery*/
@@ -309,7 +309,10 @@ static int hsi_ch_tty_write(int chno, void *data, int len)
 		if (hsi_channels[chno].write_happening == HSI_TRUE){
 			printk("mcm:[RIL Recovery]hsi_ch_tty_write failed. err= -9\n");
 			err = -9;
-			}
+			/* close the channel when on ril recovery in case cp ready is not properly issued */
+			printk("mcm: force closing channel %d for ril recovery\n", chno);
+			xmd_ch_close(chno);
+		}
 #endif
 /* LGE_UPDATE_END 2011.12.31_hyungsun.seo@lge.com_HSI pending issue during RIL Recovery*/
 	}
@@ -336,19 +339,19 @@ int xmd_ch_write(int chno, void *data, int len)
 	int err;
 
 #if MCM_DBG_LOG
-	printk("\nmcm: write entering, ch %d\n",chno);
+	printk("mcm: write entering, ch %d\n",chno);
 #endif
 
 	if (!hsi_channels[chno].write) {
 #if MCM_DBG_ERR_LOG
-		printk("\nmcm:write func NULL for ch: %d\n",chno);
+		printk("mcm:write func NULL for ch: %d\n",chno);
 #endif
 		return -EINVAL;
 	}
 
 	if (hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
 #if MCM_DBG_ERR_RECOVERY_LOG
-		printk("\nmcm:Dropping packets of channel %d as error recovery is in progress\n", chno);
+		printk("mcm:Dropping packets of channel %d as error recovery is in progress\n", chno);
 #endif
 		return -ENOTBLK;
 	}
@@ -356,7 +359,7 @@ int xmd_ch_write(int chno, void *data, int len)
 	err = hsi_channels[chno].write(chno, data, len);
 
 #if MCM_DBG_LOG
-	printk("\nmcm: write returning, ch %d\n",chno);
+	printk("mcm: write returning, ch %d\n",chno);
 #endif
 	return err;
 }
@@ -368,7 +371,7 @@ void* xmd_ch_read(int chno, int* len)
 
 void xmd_ch_close(int chno)
 {
-	printk("\nmcm:closing channel %d.\n", chno);
+	printk("mcm:closing channel %d.\n", chno);
 
 // LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
 #if defined(CONFIG_MACH_LGE)
@@ -383,14 +386,14 @@ void xmd_ch_close(int chno)
 // LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_ERR_RECOVERY_LOG
-		printk("\nmcm: Ch %d closed so starting Recovery.\n", chno);
+		printk("mcm: Ch %d closed so starting Recovery.\n", chno);
 #endif
 		xmd_dlp_recovery();
 	}
 	
 	if (hsi_channels[chno].read_happening == HSI_TRUE) {
 #if MCM_DBG_LOG
-		printk("\nmcm:locking read mutex for ch: %d\n",chno);
+		printk("mcm:locking read mutex for ch: %d\n",chno);
 #endif
 		wait_event(hsi_channels[chno].read_wait,
 					hsi_channels[chno].read_happening == HSI_FALSE);
@@ -414,7 +417,7 @@ int xmd_ch_open(struct xmd_ch_info* info, void (*notify_cb)(int chno))
 
 					hsi_channels[i].state == HSI_CH_NOT_USED) {
 #if MCM_DBG_ERR_LOG
-					printk("\nmcm:Channel state not suitable %d\n",i);
+					printk("mcm:Channel state not suitable %d\n",i);
 #endif
 					return -EINVAL;
 				}
@@ -432,14 +435,14 @@ int xmd_ch_open(struct xmd_ch_info* info, void (*notify_cb)(int chno))
 // LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 					(hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY)) {
 #if MCM_DBG_ERR_RECOVERY_LOG
-						printk("\nmcm: Recovery completed by chno %d.\n", i);
+						printk("mcm: Recovery completed by chno %d.\n", i);
 #endif
 					xmd_ch_reinit();
 				}
 
 				if (0 != hsi_ll_open(i)) {
 #if MCM_DBG_ERR_LOG
-					printk("\nmcm:hsi_ll_open failed for channel %d\n",i);
+					printk("mcm:hsi_ll_open failed for channel %d\n",i);
 #endif
 					return -EINVAL;
 				}
@@ -463,7 +466,7 @@ int xmd_ch_open(struct xmd_ch_info* info, void (*notify_cb)(int chno))
 				break;
 				default:
 #if MCM_DBG_ERR_LOG
-					printk("\nmcm:Neither TTY nor NET \n");
+					printk("mcm:Neither TTY nor NET \n");
 #endif
 					return -EINVAL;
 				}
@@ -492,7 +495,7 @@ void hsi_read_work(struct work_struct *work)
 
 	if (hsi_channels[chno].read_queued == HSI_TRUE) {
 #if MCM_DBG_LOG
-		printk("\nmcm: read wq already in progress\n");
+		printk("mcm: read wq already in progress\n");
 #endif
 		return;
 	}
@@ -507,7 +510,7 @@ void hsi_read_work(struct work_struct *work)
 			hsi_channels[chno].notify(chno);
 #if MCM_DBG_ERR_RECOVERY_LOG
 		} else {
-			printk("\nmcm:Dropping RX packets of channel %d from WQ as error recovery is in progress\n", chno);
+			printk("mcm:Dropping RX packets of channel %d from WQ as error recovery is in progress\n", chno);
 #endif
 		}
 
@@ -549,7 +552,7 @@ void hsi_write_work(struct work_struct *work)
 #if 0
 	if (hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
 #if MCM_DBG_ERR_RECOVERY_LOG
-		printk("\nmcm:Dropping packets of channel %d from WQ as error recovery is in progress\n", chno);
+		printk("mcm:Dropping packets of channel %d from WQ as error recovery is in progress\n", chno);
 #endif
 		goto quit_write_wq;
 	}
@@ -558,7 +561,7 @@ void hsi_write_work(struct work_struct *work)
 
 	if (hsi_channels[chno].write_queued == HSI_TRUE) {
 #if MCM_DBG_LOG
-		printk("\nmcm: write wq already in progress\n");
+		printk("mcm: write wq already in progress\n");
 #endif
 		return;
 	}
@@ -571,7 +574,7 @@ void hsi_write_work(struct work_struct *work)
 #if 1
 		if (hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
 #if MCM_DBG_ERR_RECOVERY_LOG
-			printk("\nmcm:Dropping packets of channel %d from WQ "
+			printk("mcm:Dropping packets of channel %d from WQ "
 					"as error recovery is in progress\n", chno);
 #endif
 			hsi_mem_free(data->buf);
@@ -584,12 +587,12 @@ void hsi_write_work(struct work_struct *work)
 		err = hsi_ll_write(chno, (unsigned char *)data->buf, data->size);
 		if (err < 0) {
 #if MCM_DBG_ERR_LOG
-			printk("\nmcm: hsi_ll_write failed\n");
+			printk("mcm: hsi_ll_write failed\n");
 #endif
 			hsi_channels[chno].write_happening = HSI_FALSE;
 		} else {
 #if MCM_DBG_LOG
-			printk("\nmcm:locking mutex for ch: %d\n",chno);
+			printk("mcm:locking mutex for ch: %d\n",chno);
 #endif
 			wait_event(hsi_channels[chno].write_wait,
 						hsi_channels[chno].write_happening == HSI_FALSE);
@@ -600,7 +603,7 @@ void hsi_write_work(struct work_struct *work)
 		if (hsi_channels[chno].tx_blocked == 1) {
 			hsi_channels[chno].tx_blocked = 0;
 #if MCM_DBG_LOG
-			printk("\nmcm: Channel queue free , restarting TX queue for ch %d \n",chno);
+			printk("mcm: Channel queue free , restarting TX queue for ch %d \n",chno);
 #endif
 			rmnet_restart_queue(chno);
 		}
@@ -651,7 +654,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 	if (!(chno <= MAX_HSI_CHANNELS && chno >= 0) ||
 		hsi_channels[chno].state == HSI_CH_NOT_USED) {
 #if MCM_DBG_ERR_LOG
-		printk("\nmcm: Wrong channel number or channel not used\n");
+		printk("mcm: Wrong channel number or channel not used\n");
 #endif
 		return;
 	}
@@ -663,7 +666,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 				data->buffer = 0;
 #if !defined (HSI_LL_ENABLE_RX_BUF_RETRY_WQ)
 #if MCM_DBG_ERR_LOG
-				printk("\nmcm: Channel %d RX queue is full so sending NAK to CP\n",
+				printk("mcm: Channel %d RX queue is full so sending NAK to CP\n",
 						chno);
 #endif
 #else
@@ -677,7 +680,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 		}
 
 #if MCM_DBG_LOG
-		printk("\nmcm: Allocating read memory of size %d to channel %d \n",
+		printk("mcm: Allocating read memory of size %d to channel %d \n",
 					data->size, chno);
 #endif
 		/* MODEM can't handle NAK so we allocate memory and
@@ -687,7 +690,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 		if (hsi_channels[chno].state == HSI_CH_FREE) {
 			spin_unlock_bh(&hsi_channels[chno].lock);
 #if MCM_DBG_ERR_LOG
-			printk("\nmcm: channel not yet opened so not allocating memory\n");
+			printk("mcm: channel not yet opened so not allocating memory\n");
 #endif
 			data->buffer = NULL;
 			break;
@@ -710,14 +713,14 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 
 	case HSI_LL_EV_FREE_MEM: {
 #if MCM_DBG_LOG
-		printk("\nmcm: Freeing memory for channel %d, ptr = 0x%p \n",
+		printk("mcm: Freeing memory for channel %d, ptr = 0x%p \n",
 					chno,data->buffer);
 #endif
 		spin_lock_bh(&hsi_channels[chno].lock);
 		if (hsi_channels[chno].state == HSI_CH_FREE) {
 			spin_unlock_bh(&hsi_channels[chno].lock);
 #if MCM_DBG_ERR_LOG
-			printk("\nmcm: channel not yet opened so cant free mem\n");
+			printk("mcm: channel not yet opened so cant free mem\n");
 #endif
 			break;
 			}
@@ -732,7 +735,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 
 	case HSI_LL_EV_WRITE_COMPLETE: {
 #if MCM_DBG_LOG
-		printk("\nmcm:unlocking mutex for ch: %d\n",chno);
+		printk("mcm:unlocking mutex for ch: %d\n",chno);
 #endif
 
 // LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [START]
@@ -751,7 +754,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 // LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_LOG
-		printk("\nmcm: write complete cb, ch %d\n",chno);
+		printk("mcm: write complete cb, ch %d\n",chno);
 #endif
 		}
 		break;
@@ -759,7 +762,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 	case HSI_LL_EV_READ_COMPLETE: {
 		int n = 0;
 #if MCM_DBG_LOG
-		printk("\nmcm: Read complete... size %d, channel %d, ptr = 0x%p \n",
+		printk("mcm: Read complete... size %d, channel %d, ptr = 0x%p \n",
 					data->size, chno,data->buffer);
 #endif
 		spin_lock_bh(&hsi_channels[chno].lock);
@@ -769,7 +772,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 			}
 			spin_unlock_bh(&hsi_channels[chno].lock);
 #if MCM_DBG_ERR_LOG
-			printk("\nmcm: channel %d not yet opened so dropping the packet\n",chno);
+			printk("mcm: channel %d not yet opened so dropping the packet\n",chno);
 #endif
 			hsi_mem_free(data->buffer);
 #if defined (HSI_LL_ENABLE_RX_BUF_RETRY_WQ)
@@ -791,7 +794,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 
 		if (n == 0) {
 #if MCM_DBG_ERR_LOG
-			printk("\nmcm: Dropping the packet as channel %d is busy sending already read data\n",chno);
+			printk("mcm: Dropping the packet as channel %d is busy sending already read data\n",chno);
 #endif
 			hsi_mem_free(data->buffer);
 			/* Schedule work Q to send data to upper layers */
@@ -810,7 +813,7 @@ void hsi_ch_cb(unsigned int chno, int result, int event, void* arg)
 	default:
 		/* Wrong event. */
 #if MCM_DBG_ERR_LOG
-		printk("\nmcm:Wrong event.ch %d event %d", chno, event);
+		printk("mcm:Wrong event.ch %d event %d", chno, event);
 #endif
 		break;
 	}
@@ -827,7 +830,7 @@ void __init xmd_ch_init(void)
 	int size = ARRAY_SIZE(hsi_all_channels);
 
 #if MCM_DBG_LOG
-	printk("\nmcm: xmd_ch_init++\n");
+	printk("mcm: xmd_ch_init++\n");
 #endif
 
 	for (i=0; i<size; i++) {
@@ -926,7 +929,7 @@ int xmd_ch_reset(void)
 #if 0
 	if(	hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
 #if MCM_DBG_ERR_RECOVERY_LOG
-		printk("\nmcm: xmd_ch_reset already HSI_MCM_STATE_ERR_RECOVERY in progress\n");
+		printk("mcm: xmd_ch_reset already HSI_MCM_STATE_ERR_RECOVERY in progress\n");
 #endif
 		return -1;
 	}
@@ -945,7 +948,7 @@ int xmd_ch_reset(void)
 // LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_ERR_RECOVERY_LOG
-	printk("\nmcm: HSI DLP Error Recovery initiated.\n");
+	printk("mcm: HSI DLP Error Recovery initiated.\n");
 #endif
 
 	for (ch_i=0; ch_i < size; ch_i++) {
@@ -970,7 +973,7 @@ int xmd_ch_reset(void)
 // LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
 
 #if MCM_DBG_ERR_RECOVERY_LOG
-	printk("\nmcm: HSI DLP Error Recovery completed waiting for CP ready indication from RIL.\n");
+	printk("mcm: HSI DLP Error Recovery completed waiting for CP ready indication from RIL.\n");
 #endif
 	/* Change MCM state to initilized when CP ready
 		indication from tty ctrl channel is issued */
@@ -995,7 +998,7 @@ void xmd_dlp_recovery(void)
 
 		if( hsi_mcm_state == HSI_MCM_STATE_ERR_RECOVERY) {
 #if MCM_DBG_ERR_RECOVERY_LOG
-			printk("\nmcm: xmd_ch_reset already HSI_MCM_STATE_ERR_RECOVERY in progress\n");
+			printk("mcm: xmd_ch_reset already HSI_MCM_STATE_ERR_RECOVERY in progress\n");
 #endif
 			return;
 		}
@@ -1009,7 +1012,7 @@ void xmd_dlp_recovery(void)
 	else
 	{
 #if MCM_DBG_ERR_RECOVERY_LOG
-		printk("\nmcm: xmd_dlp_recovery already in progress\n");
+		printk("mcm: xmd_dlp_recovery already in progress\n");
 #endif
 	}
 	// LGE_CHANGE [MIPI-HSI] jaesung.woo@lge.com [END]
