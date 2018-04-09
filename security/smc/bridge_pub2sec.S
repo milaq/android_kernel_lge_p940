@@ -78,6 +78,7 @@ return_from_irq:
 	b	label_smc
 
 label_smc:
+	.arch_extension sec
 	INVALIDATE_BTB
 	dsb
 	dmb
